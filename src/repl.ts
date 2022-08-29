@@ -1,0 +1,47 @@
+import { expr, id } from "./expr";
+import { createInterface } from 'readline';
+import { parse, seq, end, map, key, opt } from "./parser";
+import { Cons, formatType, fresh, infer, Lam, Num, Type } from "./type";
+import { mapValues, Context } from "./utils";
+import { evaluate, formatValue, Value, VLst, VNum } from "./value";
+
+const equals = key('=');
+const fullExpr = map(seq(expr, end), ([x]) => x);
+const assignment = seq(opt(map(seq(id, equals), ([x]) => x.name)), fullExpr);
+
+export async function repl() {
+    const rl = createInterface(process.stdin, process.stdout);
+
+    const t = fresh();
+    const context: Context<[Value, Type]> = {
+        add: [((x: VNum, y: VNum) => (x + y) as VNum) as Value, Lam(Num, Num, Num)],
+        nil: [[], Cons('List', fresh())],
+        cons: [((x: Value, tail: VLst) => [x, ...tail]) as Value, Lam(t, Cons('List', t), Cons('List', t))],
+        head: [((lst: VLst) => lst[0]) as Value, Lam(Cons('List', t), t)],
+        tail: [((lst: VLst) => lst.slice(1)) as Value, Lam(Cons('List', t), Cons('List', t))]
+    };
+
+    const valueContext = mapValues(context, x => x[0]);
+    const typeContext = mapValues(context, x => x[1]);
+
+    while (true) {
+        const text: string = await new Promise(res => rl.question('lang> ', res));
+        try {
+            if (text.startsWith('!type ')) {
+                const arg = text.replace('!type ', '').trim()
+                console.log(formatType(typeContext[arg]));
+            } else {
+                const [name, ast] = parse(assignment, text);
+                const [c, type] = infer(ast)(typeContext);
+                const value = evaluate(ast)(valueContext);
+                if (name) {
+                    valueContext[name] = value;
+                    typeContext[name] = type
+                }
+                console.log(`${formatValue(value)} :: ${formatType(type)}`)
+            }
+        } catch (e) {
+            console.error(`!!`, e.message);
+        }
+    }
+}
