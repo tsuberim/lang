@@ -96,49 +96,70 @@ export function fresh(): TId {
 }
 
 export function unify(t1: Type, t2: Type): Context<Type> {
-    if (t1.kind == 'lam' && t2.kind === 'lam' && t1.args.length === t2.args.length) {
-        let subst = unify(t1.result, t2.result);
-        t1.args.forEach((t1arg, i) => {
-            const t2arg = t2.args[i];
-            subst = applySubst(unify(apply(t1arg)(subst), apply(t2arg)(subst)), subst);
-        })
-        return subst;
-    }
+    try {
+        if (t1.kind === 'id') { return bind(t1.name, t2) }
+        if (t2.kind === 'id') { return bind(t2.name, t1) }
 
-    if (t1.kind === 'id') { return bind(t1.name, t2) }
-    if (t2.kind === 'id') { return bind(t2.name, t1) }
-
-    if (t1.kind === 'cons' && t2.kind === 'cons' && t1.name === t2.name && t1.args.length === t2.args.length) {
-        let subst = {};
-        t1.args.forEach((t, i) => subst = applySubst(unify(t, t2.args[i]), subst))
-        return subst;
-    }
-
-    if (t1.kind === 'rec' && t2.kind === 'rec') {
-        const intersection = Object.keys(t1.record).filter(k => t2.record[k]);
-        let subst = {};
-        for (const k of intersection) {
-            const s = unify(t1.record[k], t2.record[k]);
-            subst = applySubst(s, subst);
+        if (t1.kind !== t2.kind) {
+            const displayName = { rec: 'Record', cons: 'TypeConstructor', id: 'Variable', lam: 'Function' }
+            throw new Error(`Types have incompatible kinds: ${displayName[t1.kind]} != ${displayName[t2.kind]}`)
         }
 
-        const rest = t1.rest && t2.rest && fresh()
-        const t1Minust2 = filterValues(t1.record, (_, k) => !t2.record[k]);
-        const t2Minust1 = filterValues(t2.record, (_, k) => !t1.record[k]);
-        if (t1.rest) {
-            subst = applySubst(unify(t1.rest, { kind: 'rec', record: t2Minust1, rest }), subst);
-        } else if (Object.keys(t2Minust1).length) {
-            throw new Error(`Could not unify records ${formatType(t1)} ~ ${formatType(t2)}`)
+        if (t1.kind == 'lam' && t2.kind === 'lam') {
+            if (t1.args.length !== t2.args.length) {
+                throw new Error(`Function ${formatType(t1)} has different number of arguments (${t1.args.length}) from ${formatType(t2)} ${t2.args.length}`)
+            }
+            let subst = unify(t1.result, t2.result);
+            t1.args.forEach((t1arg, i) => {
+                const t2arg = t2.args[i];
+                subst = applySubst(unify(apply(t1arg)(subst), apply(t2arg)(subst)), subst);
+            })
+            return subst;
         }
-        if (t2.rest) {
-            subst = applySubst(unify(t2.rest, { kind: 'rec', record: t1Minust2, rest }), subst);
-        } else if (Object.keys(t1Minust2).length) {
-            throw new Error(`Could not unify records ${formatType(t1)} ~ ${formatType(t2)}`)
-        }
-        return subst;
-    }
 
-    throw new Error(`Could not unify types: ${formatType(t1)} ~ ${formatType(t2)}`)
+
+        if (t1.kind === 'cons' && t2.kind === 'cons') {
+            if (t1.name !== t2.name) {
+                throw new Error(`Type constructors are incompatible ${t1.name} != ${t2.name}`)
+            }
+
+            if (t1.args.length !== t2.args.length) {
+                throw new Error(`Type ${formatType(t1)} has different number of arguments (${t1.args.length}) from ${formatType(t2)} ${t2.args.length}`)
+            }
+
+            let subst = {};
+            t1.args.forEach((t, i) => subst = applySubst(unify(t, t2.args[i]), subst))
+            return subst;
+        }
+
+        if (t1.kind === 'rec' && t2.kind === 'rec') {
+            const intersection = Object.keys(t1.record).filter(k => t2.record[k]);
+            let subst = {};
+            for (const k of intersection) {
+                const s = unify(t1.record[k], t2.record[k]);
+                subst = applySubst(s, subst);
+            }
+
+            const rest = t1.rest && t2.rest && fresh()
+            const t1Minust2 = filterValues(t1.record, (_, k) => !t2.record[k]);
+            const t2Minust1 = filterValues(t2.record, (_, k) => !t1.record[k]);
+            if (t1.rest) {
+                subst = applySubst(unify(t1.rest, { kind: 'rec', record: t2Minust1, rest }), subst);
+            } else if (Object.keys(t2Minust1).length) {
+                throw new Error(`${formatType(t1)} is not extensible and lacks properties: ${Object.keys(t2Minust1).join(', ')}`)
+            }
+            if (t2.rest) {
+                subst = applySubst(unify(t2.rest, { kind: 'rec', record: t1Minust2, rest }), subst);
+            } else if (Object.keys(t1Minust2).length) {
+                throw new Error(`${formatType(t2)} is not extensible and lacks properties: [${Object.keys(t1Minust2).join(', ')}]`)
+            }
+            return subst;
+        }
+
+        throw new Error(`could not unify types: ${formatType(t1)} ~ ${formatType(t2)}`)
+    } catch (e) {
+        throw new Error(`Could not unify types: ${formatType(t1)} ~ ${formatType(t2)}\n\tbecause ${e.message}`)
+    }
 }
 
 export function bind(name: string, t: Type): Context<Type> {

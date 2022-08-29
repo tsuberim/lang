@@ -7,4 +7,8 @@
 - wasm target
 - modules
 - invent a name
-- colors
+- [V] colors
+- better parse errors
+- [V] better type errors
+- minimal parens
+- fix precedence issues when parsing

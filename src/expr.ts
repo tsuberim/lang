@@ -19,6 +19,7 @@ export const expr: Parser<Expr> = delay(() => map(seq(nonLeftRecursive, leftRecu
 
 export const nonLeftRecursive: Parser<Expr> = delay(() => alt<Expr>(
     num,
+    unary,
     id,
     str,
     rec,
@@ -43,6 +44,7 @@ export const str: Parser<Str> = map(bet(lit('`'), rep(alt<string | Expr>(strPart
 export const rec: Parser<Rec> = map(bet(lcurly, sep(map(seq(name, colon, expr), ([name, , val]) => [name, val] as [string, Expr]), comma), rcurly), (entries) => ({ type: 'rec', record: Object.fromEntries(entries) }));
 export const list: Parser<List> = map(bet(lbracket, sep(expr, comma), rbracket), values => ({ type: 'list', values }))
 export const lam: Parser<Lam> = map(seq(backslash, alt(bet(lbrace, sep(id, comma), rbrace), map(id, x => [x])), arrow, expr), ([, args, , body]) => ({ type: 'lam', args, body }))
+export const unary: Parser<App> = map(seq(sym, expr), ([name, e]) => ({ type: 'app', fn: { type: 'id', name }, args: [e] }))
 
 // left recursive
 export const prefix_app: Parser<(e: Expr) => App> = map(bet(lbrace, sep(expr, comma), rbrace), (args) => fn => ({ type: 'app', fn, args }));
@@ -100,6 +102,6 @@ export const format = walkExpr<string>({
     acc: ({ name }, e) => `${e}.${name}`,
     list: (_, values) => `[${values.join(', ')}]`,
     id: ({ name }) => name,
-    app: (_, fn, args) => fn.match(symPattern) ? `(${args[0]} ${fn} ${args[1]})` : `${fn}(${args.join(', ')})`,
-    lam: ({ args }, body) => `\\${args.length > 1 ? '(' + args.map(arg => arg.name).join(', ') + ')' : args.length == 1 ? args[0].name : '()'} -> ${body}`
+    app: (_, fn, args) => fn.match(symPattern) ? (args.length == 1 ? `${fn}${args[0]}` : `(${args[0]} ${fn} ${args[1]})`) : `${fn}(${args.join(', ')})`,
+    lam: ({ args }, body) => `(\\${args.length > 1 ? '(' + args.map(arg => arg.name).join(', ') + ')' : args.length == 1 ? args[0].name : '()'} -> ${body})`
 })
