@@ -1,5 +1,5 @@
 import { mapValues } from './utils';
-import { delay, alt, map, Parser, pat, key, bet, sep, seq, rep, lit, lbrace, rbrace, name, arrow, at, backslash, colon, comma, lbracket, lcurly, rbracket, rcurly, eps, sym, dot, symPattern } from './parser';
+import { delay, alt, map, Parser, pat, bet, sep, seq, rep, lit, lbrace, rbrace, name, arrow, at, backslash, colon, comma, lbracket, lcurly, rbracket, rcurly, eps, sym, dot, symPattern } from './parser';
 
 export type Lit = { type: 'lit', value: number | string }
 export type Str = { type: 'str', parts: (string | Expr)[] }

@@ -5,6 +5,7 @@ import { Cons, formatType, fresh, infer, Lam, Num, Type } from "./type";
 import { mapValues, Context } from "./utils";
 import { evaluate, formatValue, Value, VLst, VNum } from "./value";
 import chalk from "chalk";
+import { WatEmitter } from "./wasm";
 
 const equals = key('=');
 const fullExpr = map(seq(expr, end), ([x]) => x);
@@ -43,6 +44,12 @@ export async function repl() {
                 break;
             } else if (text.trim() === '!clear') {
                 console.clear()
+            } else if(text.startsWith('!compile ')) {
+                const source = text.replace('!compile ', '').trim();
+                const ast = parse(expr, source);
+                const emitter = new WatEmitter();
+                const wat = emitter.compile(ast);
+                console.log(wat)
             } else {
                 const [name, ast] = parse(assignment, text);
                 console.log(format(ast))

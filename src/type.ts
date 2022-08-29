@@ -1,5 +1,5 @@
 
-import { walkExpr } from "./expr";
+import { Expr, walkExpr } from "./expr";
 import { mapValues, Context, filterValues } from "./utils";
 import chalk from 'chalk';
 
@@ -241,4 +241,4 @@ export const infer = walkExpr<(c: Context<Type>) => [Context<Type>, Type]>({
         const finalType: TLam = { kind: 'lam', args: args.map(arg => argTypes[arg.name]), result: t };
         return [subst, apply(finalType)(subst)]
     },
-})
+});
