@@ -4,6 +4,7 @@ import { parse, seq, end, map, key, opt } from "./parser";
 import { Cons, formatType, fresh, infer, Lam, Num, Type } from "./type";
 import { mapValues, Context } from "./utils";
 import { evaluate, formatValue, Value, VLst, VNum } from "./value";
+import chalk from "chalk";
 
 const equals = key('=');
 const fullExpr = map(seq(expr, end), ([x]) => x);
@@ -34,7 +35,9 @@ export async function repl() {
                 const arg = text.replace('!type ', '').trim()
                 console.log(formatType(typeContext[arg]));
             } else if (text.trim() === '!values') {
-                console.log(valueContext)
+                console.log(Object.entries(valueContext).map(([name, val]) => `${name}\t=\t${formatValue(val)}`).join('\n'))
+            } else if (text.trim() === '!types') {
+                console.log(Object.entries(typeContext).map(([name, type]) => `${name}\t::\t${formatType(type)}`).join('\n'))
             } else {
                 const [name, ast] = parse(assignment, text);
                 console.log(format(ast))
@@ -44,7 +47,7 @@ export async function repl() {
                     valueContext[name] = value;
                     typeContext[name] = type
                 }
-                console.log(`${formatValue(value)} :: ${formatType(type)}`)
+                console.log(chalk`${formatValue(value)} {gray ::} ${formatType(type)}`)
             }
         } catch (e) {
             console.error(`!!`, e.message);

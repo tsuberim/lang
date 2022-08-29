@@ -1,5 +1,7 @@
+
 import { walkExpr } from "./expr";
 import { mapValues, Context, filterValues } from "./utils";
+import chalk from 'chalk';
 
 export type TCons = { kind: 'cons', name: string, args: Type[] }
 export type TId = { kind: 'id', name: string };
@@ -45,10 +47,10 @@ export function walkType<T>(walker: TypeWalker<T>) {
 }
 
 export const formatType = walkType<string>({
-    cons: ({ name }, args) => `${name}${args.length ? `<${args.join(',')}>` : ''}`,
-    id: ({ name }) => name,
+    cons: ({ name }, args) => chalk`{red ${name}}${args.length ? chalk`{red <}${args.join(',')}{red >}` : ''}`,
+    id: ({ name }) => chalk.green(name),
     rec: (_, rec, rest) => `{${Object.entries(rec).map(arr => arr.join(': ')).join(', ')}${rest ? ` | ${rest}` : ''}}`,
-    lam: (_, args, result) => `Lam<${args.join(', ')}, ${result}>`
+    lam: (_, args, result) => chalk`{gray (}${args.join(', ')}{gray )} -> ${result}`
 })
 
 export const apply = walkType<(ctx: Context<Type>) => Type>({

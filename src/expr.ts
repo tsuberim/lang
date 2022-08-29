@@ -1,5 +1,5 @@
 import { mapValues } from './utils';
-import { delay, alt, map, Parser, pat, key, bet, sep, seq, rep, lit, lbrace, rbrace, name, arrow, at, backslash, colon, comma, lbracket, lcurly, rbracket, rcurly, eps, sym, dot } from './parser';
+import { delay, alt, map, Parser, pat, key, bet, sep, seq, rep, lit, lbrace, rbrace, name, arrow, at, backslash, colon, comma, lbracket, lcurly, rbracket, rcurly, eps, sym, dot, symPattern } from './parser';
 
 export type Lit = { type: 'lit', value: number | string }
 export type Str = { type: 'str', parts: (string | Expr)[] }
@@ -100,6 +100,6 @@ export const format = walkExpr<string>({
     acc: ({ name }, e) => `${e}.${name}`,
     list: (_, values) => `[${values.join(', ')}]`,
     id: ({ name }) => name,
-    app: (_, fn, args) => `${fn}(${args.join(', ')})`,
-    lam: ({ args }, body) => `\\${args.length > 1 ? args.map(arg => arg.name).join(', ') : args.length == 1 ? args[0].name : '()'} -> ${body}`
+    app: (_, fn, args) => fn.match(symPattern) ? `(${args[0]} ${fn} ${args[1]})` : `${fn}(${args.join(', ')})`,
+    lam: ({ args }, body) => `\\${args.length > 1 ? '(' + args.map(arg => arg.name).join(', ') + ')' : args.length == 1 ? args[0].name : '()'} -> ${body}`
 })

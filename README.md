@@ -7,3 +7,4 @@
 - wasm target
 - modules
 - invent a name
+- colors

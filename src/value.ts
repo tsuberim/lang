@@ -1,5 +1,6 @@
 import { walkExpr } from "./expr";
 import { mapValues, Context } from "./utils";
+import chalk from 'chalk';
 
 export type VNum = number;
 export type VStr = string;
@@ -36,11 +37,11 @@ export function walkValue<T>(walker: ValueWalker<T>) {
 }
 
 export const formatValue = walkValue({
-    num: n => n.toString(),
-    str: str => '`' + str + '`',
-    lst: (_, vals) => `[${vals.join(', ')}]`,
-    rec: (_, rec) => `{${Object.entries(rec).map(arr => arr.join(': ')).join(', ')}}`,
-    clo: f => `<closure>`
+    num: n => chalk.yellow(n.toString()),
+    str: str => chalk.blueBright('`' + str + '`'),
+    lst: (_, vals) => chalk`{cyan [} ${vals.join(', ')} {cyan ]}`,
+    rec: (_, rec) => chalk.cyan('{ ') + Object.entries(rec).map(([name, value]) => chalk.cyan(name) + chalk.cyan(': ') + value).join(', ') + chalk.cyan(' }'),
+    clo: f => chalk.magenta(`<closure>`)
 });
 
 export const evaluate = walkExpr<(ctx: Context<Value>) => Value>({
