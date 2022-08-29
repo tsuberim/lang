@@ -25,7 +25,7 @@ export function walkValue<T>(walker: ValueWalker<T>) {
         } else if (typeof val === 'object' && !Array.isArray(val)) {
             return walker.rec(val, mapValues(val, f))
         } else if (Array.isArray(val)) {
-            return walker.lst(val,val.map(f))
+            return walker.lst(val, val.map(f))
         } else if (typeof val === 'function') {
             return walker.clo(val);
         } else {
@@ -48,6 +48,7 @@ export const evaluate = walkExpr<(ctx: Context<Value>) => Value>({
     str: (_, parts) => ctx => parts.map(part => typeof part === 'string' ? part : part(ctx)).join(''),
     list: (_, values) => ctx => values.map(val => val(ctx)),
     rec: (_, record) => ctx => mapValues(record, v => v(ctx)),
+    acc: ({ name }, val) => ctx => (val(ctx) as VRec)[name],
     id: ({ name }) => ctx => ctx[name],
     app: (_, fn, args) => ctx => (fn(ctx) as Function)(...args.map(arg => arg(ctx))),
     lam: ({ args }, body) => ctx => (...vals: any[]) => body({ ...ctx, ...Object.fromEntries(args.map((arg, i) => [arg.name, vals[i]])) })

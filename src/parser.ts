@@ -138,6 +138,8 @@ export function end(input: string): [true, string] {
     }
 }
 
+export const eps = lit('');
+
 export const lbrace = key('(');
 export const rbrace = key(')');
 export const lcurly = key('{');
@@ -152,5 +154,10 @@ export const pipe = key('|');
 export const backslash = key('\\');
 export const at = key('@');
 export const arrow = key('->');
-export const namePattern = /^[a-zA-Z][a-zA-Z0-0]*/;
+export const dot = key('.');
+
+export const namePattern = /^[a-zA-Z][a-zA-Z0-0_]*/;
 export const name = pat(namePattern);
+
+export const symPattern = /^\s*[!@#%~\^\&\*\-\+=/\?]+\s*/;
+export const sym = map(pat(symPattern), x => x.trim());

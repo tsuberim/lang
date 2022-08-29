@@ -174,6 +174,12 @@ export const infer = walkExpr<(c: Context<Type>) => [Context<Type>, Type]>({
         })
         return [subst, { kind: 'rec', record: t }]
     },
+    acc: ({ name }, value) => c => {
+        const [s, t] = value(c);
+        const typeofProp = fresh();
+        const subst = applySubst(unify(t, { kind: 'rec', record: { [name]: typeofProp }, rest: fresh() }), s);
+        return [subst, apply(typeofProp)(subst)];
+    },
     list: (_, values) => c => {
         let subst = {};
         let t: Type = fresh();
