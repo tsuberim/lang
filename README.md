@@ -1,8 +1,8 @@
 # TODO
 
 - typeclasses
-- infix ops
-- record property access
+- [V] infix ops
+- [V] record property access
 - tagged union
 - wasm target
 - modules
