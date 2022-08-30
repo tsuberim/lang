@@ -1,15 +1,12 @@
-import { expr, format, id } from "./expr";
+import { expr } from "./expr";
 import { createInterface } from 'readline';
-import { parse, seq, end, map, key, opt, formatSpan, bet, spaces } from "./parser";
+import { parse } from "./parser";
 import { Cons, formatType, fresh, infer, Lam, Num, Type } from "./type";
 import { mapValues, Context } from "./utils";
 import { evaluate, formatValue, Value, VLst, VNum } from "./value";
 import chalk from "chalk";
 import { runModule, toWasm, WatEmitter } from "./wasm";
-
-const equals = key('=');
-const fullExpr = map(bet(spaces, seq(expr, end), spaces), ([x]) => x);
-const assignment = seq(opt(map(seq(id, equals), ([x]) => x.name)), fullExpr);
+import { assignment } from "./module";
 
 export async function repl() {
     const rl = createInterface(process.stdin, process.stdout);
@@ -56,14 +53,14 @@ export async function repl() {
                 const result = await runModule(wasm);
                 console.log(result)
             } else {
-                const [name, ast] = parse(assignment, text);
-                const [c, type] = infer(ast)(typeContext);
-                const value = evaluate(ast)(valueContext);
+                const {id: {name}, expr} = parse(assignment, text);
+                const [c, type] = infer(expr)(typeContext);
+                const value = evaluate(expr)(valueContext);
                 if (name) {
                     valueContext[name] = value;
                     typeContext[name] = type
                 }
-                console.log(chalk`${formatValue(value)} {gray ::} ${formatType(type)}`)
+                console.log(chalk`${formatValue(value)} {gray :} ${formatType(type)}`)
             }
         } catch (e) {
             console.error(chalk.red('ERROR: '), e.message, e.stack);
