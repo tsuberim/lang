@@ -122,7 +122,7 @@ export function unify(t1: Type, t2: Type): Context<Type> {
             }
 
             let subst = {};
-            t1.args.forEach((t, i) => subst = applySubst(unify(t, t2.args[i]), subst))
+            t1.args.forEach((t, i) => subst = applySubst(unify(apply(t)(subst), apply(t2.args[i])(subst)), subst))
             return subst;
         }
 
