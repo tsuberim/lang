@@ -1,14 +1,14 @@
 import { expr, format, id } from "./expr";
 import { createInterface } from 'readline';
-import { parse, seq, end, map, key, opt } from "./parser";
+import { parse, seq, end, map, key, opt, formatSpan, bet, spaces } from "./parser";
 import { Cons, formatType, fresh, infer, Lam, Num, Type } from "./type";
 import { mapValues, Context } from "./utils";
 import { evaluate, formatValue, Value, VLst, VNum } from "./value";
 import chalk from "chalk";
-import { WatEmitter } from "./wasm";
+import { runModule, toWasm, WatEmitter } from "./wasm";
 
 const equals = key('=');
-const fullExpr = map(seq(expr, end), ([x]) => x);
+const fullExpr = map(bet(spaces, seq(expr, end), spaces), ([x]) => x);
 const assignment = seq(opt(map(seq(id, equals), ([x]) => x.name)), fullExpr);
 
 export async function repl() {
@@ -36,6 +36,9 @@ export async function repl() {
             if (text.startsWith('!type ')) {
                 const arg = text.replace('!type ', '').trim()
                 console.log(formatType(typeContext[arg]));
+            } if (text.startsWith('!file ')) {
+                const arg = text.replace('!type ', '').trim()
+                console.log(formatType(typeContext[arg]));
             } else if (text.trim() === '!values') {
                 console.log(Object.entries(valueContext).map(([name, val]) => chalk`${name}\t{gray =}\t${formatValue(val)}`).join('\n'))
             } else if (text.trim() === '!types') {
@@ -44,14 +47,19 @@ export async function repl() {
                 break;
             } else if (text.trim() === '!clear') {
                 console.clear()
-            } else if(text.startsWith('!compile ')) {
+            } else if (text.startsWith('!compile ')) {
                 const source = text.replace('!compile ', '').trim();
                 const ast = parse(expr, source);
                 const emitter = new WatEmitter();
                 const wat = emitter.compile(ast);
-                console.log(wat)
+                console.log(wat);
+                const wasm = await toWasm(wat);
+                console.log(wasm);
+                const result = await runModule(wasm);
+                console.log(result)
             } else {
                 const [name, ast] = parse(assignment, text);
+                console.log(formatSpan(ast.span))
                 console.log(format(ast))
                 const [c, type] = infer(ast)(typeContext);
                 const value = evaluate(ast)(valueContext);

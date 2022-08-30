@@ -1,5 +1,4 @@
 import { walkExpr, Expr, Id } from './expr';
-import { symPattern } from './parser';
 import { infer, Type } from './type';
 import dedent from 'dedent';
 
@@ -10,13 +9,13 @@ export class WatEmitter {
         rec: (_, record) => dedent`unreachable`,
         acc: ({ name }, e) => dedent`unreachable`,
         list: (_, values) => dedent`unreachable`,
-        id: ({ name }) => dedent`local.get $${name}`,
+        id: ({ name }) => dedent`get_local $${name}`,
         app: (e, fn, args) => {
             const t = this.type(args.length);
             return `
                 ${args.join('\n')}
                 ${fn}
-                call_indirect (type ${t})
+                call_indirect ${t}
             `
         },
         lam: ({ args }, body) => {
@@ -33,17 +32,17 @@ export class WatEmitter {
     }
     functions: { body: string, args: Id[] }[] = []
 
-    compile(expr: Expr) {
+    compile(expr: Expr): string {
         const [x, type] = infer(expr)({})
         const code = this.#compile(expr);
         return dedent`
             (module
-                (table ${this.functions.length} funcref)
+                (table ${this.functions.length} anyfunc)
                 ${this.functions.map(({ body, args }, i) => `
                     (func $f${i} ${args.map(({ name }, i) => `(param $${name} i32)`).join(' ')} (result i32)
                         ${body}
                     )
-                `)}
+                `).join('\n')}
                 (elem (i32.const 0) ${new Array(this.functions.length).fill(0).map((_, i) => `$f${i}`).join(' ')})
                 ${Object.entries(this.types).map(([name, body]) => `(type ${name} ${body})`)}
                 (func (export "main") (result i32)
@@ -52,4 +51,15 @@ export class WatEmitter {
             )
         `
     }
+}
+
+export async function toWasm(wast: string): Promise<Uint8Array> {
+    const wasm2wasm = require('wast2wasm')
+    const { buffer, log } = await wasm2wasm(wast, true);
+    return buffer;
+}
+
+export async function runModule(buffer: Uint8Array): Promise<number> {
+    const { instance } = await WebAssembly.instantiate(buffer);
+    return (instance.exports as any).main();
 }

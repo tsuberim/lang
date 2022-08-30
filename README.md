@@ -1,14 +1,12 @@
 # TODO
 
 - typeclasses
-- [V] infix ops
-- [V] record property access
 - tagged union
 - wasm target
 - modules
 - invent a name
-- [V] colors
 - better parse errors
-- [V] better type errors
 - minimal parens
+- VSCode language server
 - fix precedence issues when parsing
+- provide span info in parser
