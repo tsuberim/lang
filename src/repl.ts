@@ -57,9 +57,6 @@ export async function repl() {
                 console.log(result)
             } else {
                 const [name, ast] = parse(assignment, text);
-                console.log(JSON.stringify(ast));
-                console.log(formatSpan(ast.span))
-                console.log(format(ast))
                 const [c, type] = infer(ast)(typeContext);
                 const value = evaluate(ast)(valueContext);
                 if (name) {
