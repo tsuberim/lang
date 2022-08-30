@@ -1,6 +1,5 @@
-import fs, { ReadStream } from 'fs-extra';
+import fs, { ReadStream } from 'fs';
 import { Readable } from 'stream';
-import { assertEq, throws } from './utils'
 
 export interface Pos {
     chars: number
@@ -26,21 +25,24 @@ export class BufferedString {
     slice(from: number, to: number): string {
         const more = to - this.acc.length;
         if (more > 0) {
-            this.acc += this.readable.read(more);
+            const chunk = this.readable.read(more);
+            if (chunk) {
+                this.acc += chunk;
+            }
         }
         return this.acc.slice(from, to);
     }
 }
 
 export class Source {
-    static END = '\u0000';
-    static INDENT = '\u0001';
-    static DEDENT = '\u0002';
+    static END = '\x00';
+    static INDENT = '\x01';
+    static DEDENT = '\x02';
 
     constructor(private str: BufferedString, public pos: Pos = { chars: 0, line: 0, column: 0, indent: 0 }) { }
 
     static fromString(str: string) {
-        return ReadStream.from(str);
+        return Readable.from(str);
     }
 
     static fromFile(path: string) {
@@ -51,9 +53,6 @@ export class Source {
         const str = this.peek(n);
         let { chars, line, column, indent } = { ...this.pos };
         for (const char of str) {
-            if (char === Source.END || char === Source.INDENT || char === Source.DEDENT) {
-                throw new Error(`Invalid reserved char ${char}`);
-            }
             if (char === '\n') {
                 line++;
                 column = 1;
@@ -93,8 +92,6 @@ export function matches<T>(parser: Parser<T>, input: string): boolean {
     }
 }
 
-assertEq(parse(lit('hello'), 'hello'), 'hello')
-throws(() => parse(lit('hello'), 'hola'))
 export function lit(str: string): Parser<string> {
     return (input) => {
         const start = input.peek(str.length);
@@ -106,7 +103,6 @@ export function lit(str: string): Parser<string> {
     }
 }
 
-assertEq(parse(map(lit('hello'), x => x.length), 'hello'), 5)
 export function map<T, K>(parser: Parser<T>, fn: (t: T, span: Span) => K): Parser<K> {
     return (input) => {
         const [result, rest] = parser(input);
@@ -137,8 +133,6 @@ export function notChar(...chars: string[]): Parser<string> {
 }
 
 
-assertEq(parse(seq(lit('hello'), lit('world')), 'helloworld'), ['hello', 'world'])
-throws(() => parse(seq(lit('hello'), lit('world')), 'hellohola'))
 export function seq<ARGS extends any[]>(...parsers: { [T in keyof ARGS]: Parser<ARGS[T]> }): Parser<ARGS> {
     return (input: Source) => {
         const out: any[] = [];
@@ -151,9 +145,6 @@ export function seq<ARGS extends any[]>(...parsers: { [T in keyof ARGS]: Parser<
     }
 }
 
-assertEq(parse(alt(lit('hello'), lit('hola')), 'hello'), 'hello')
-assertEq(parse(alt(lit('hello'), lit('hola')), 'hola'), 'hola')
-throws(() => parse(alt(lit('hello'), lit('hola')), 'foobar'))
 export function alt<T>(...parsers: Parser<T>[]): Parser<T> {
     return (input) => {
         const errs = [];
@@ -168,10 +159,6 @@ export function alt<T>(...parsers: Parser<T>[]): Parser<T> {
     }
 }
 
-assertEq(parse(rep(lit('foo')), ''), [])
-assertEq(parse(rep(lit('foo')), 'foo'), ['foo'])
-assertEq(parse(rep(lit('foo')), 'foofoo'), ['foo', 'foo'])
-throws(() => parse(rep(lit('foo')), 'fosofoo'))
 export function rep<T>(parser: Parser<T>): Parser<T[]> {
     return (input) => {
         const out: T[] = [];
@@ -216,15 +203,9 @@ export function delay<T>(thunk: () => Parser<T>): Parser<T> {
 }
 
 
-assertEq(parse(end, ''), true)
-throws(() => parse(end, 'asdf'))
-export function end(input: Source): [true, Source] {
-    if (input.peek(1) === Source.END) {
-        return [true, input];
-    } else {
-        throw new Error(`Expected end of input`)
-    }
-}
+export const end = lit(Source.END);
+export const indent = lit(Source.INDENT);
+export const dedent = lit(Source.DEDENT);
 
 export const lowercase = range('a', 'z');
 export const uppercase = range('A', 'Z');

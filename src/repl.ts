@@ -31,7 +31,7 @@ export async function repl() {
     const typeContext = mapValues(context, x => x[1]);
 
     while (true) {
-        const text: string = await new Promise(res => rl.question(chalk.gray('lang> '), res));
+        const text: string = await new Promise(res => rl.question(chalk.gray('> '), res));
         try {
             if (text.startsWith('!type ')) {
                 const arg = text.replace('!type ', '').trim()
@@ -39,10 +39,8 @@ export async function repl() {
             } if (text.startsWith('!file ')) {
                 const arg = text.replace('!type ', '').trim()
                 console.log(formatType(typeContext[arg]));
-            } else if (text.trim() === '!values') {
-                console.log(Object.entries(valueContext).map(([name, val]) => chalk`${name}\t{gray =}\t${formatValue(val)}`).join('\n'))
-            } else if (text.trim() === '!types') {
-                console.log(Object.entries(typeContext).map(([name, type]) => chalk`${name}\t{gray ::}\t${formatType(type)}`).join('\n'))
+            } else if (text.trim() === '!context') {
+                console.log(Object.entries(valueContext).map(([name, val]) => chalk`${name}\t{gray =}\t${formatValue(val)}\t:\t${formatType(typeContext[name])}`).join('\n'))
             } else if (text.trim() === '!exit') {
                 break;
             } else if (text.trim() === '!clear') {
