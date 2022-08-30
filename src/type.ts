@@ -61,7 +61,14 @@ export const formatType = walkType<string>({
         }
     },
     id: ({ name }) => chalk.green(name),
-    rec: ({ union, partial }, rec, rest) => `${union ? '[' : '{'}${partial ? `* ` : ''}${Object.entries(rec).map(([name, val]) => union ? `${name}${val === '{}' ? '' : `<${val}>`}` : `${name}: ${val}`).join(union ? ' | ' : ', ')}${union ? ']' : '}'}`
+    rec: ({ union, partial, items }, rec, rest) => {
+        const formatCons = (name: string, val: string) => `${name}${val === '{}' ? '' : `<${val}>`}`;
+        if (union && Object.keys(rec).length === 1) {
+            const k = Object.keys(rec)[0];
+            return formatCons(k, rec[k]);
+        }
+        return `${union ? '[' : '{'}${partial ? `* ` : ''}${Object.entries(rec).map(([name, val]) => union ? formatCons(name, val) : `${name}: ${val}`).join(union ? ' | ' : ', ')}${union ? ']' : '}'}`
+    }
 })
 
 export const apply = walkType<(ctx: Context<Type>) => Type>({
