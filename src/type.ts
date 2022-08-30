@@ -1,32 +1,38 @@
 
 import { Expr, walkExpr } from "./expr";
-import { mapValues, Context, filterValues } from "./utils";
+import { mapValues, Context, filterValues, isUppercase } from "./utils";
 import chalk from 'chalk';
+import { alt, bet, colon, delay, key, langle, lcurly, lowerName, map, opt, Parser, pipe, rangle, rcurly, rep, seq, upperName } from "./parser";
 
 export type TCons = { kind: 'cons', name: string, args: Type[] }
 export type TId = { kind: 'id', name: string };
-export type TRec = { kind: 'rec', record: { [key: string]: Type }, rest?: TId };
-export type TLam = { kind: 'lam', args: Type[], result: Type };
+export type TRec = { kind: 'rec', union: boolean, partial: boolean, items: { [key: string]: Type }, rest: TId };
 
-export const Num: TCons = { kind: 'cons', name: 'Num', args: [] }
-export const Str: TCons = { kind: 'cons', name: 'Str', args: [] }
+let i = 0;
+export function fresh(): TId {
+    return { kind: 'id', name: `T${i++}` }
+}
+
+export const Unit: Type = { kind: 'rec', partial: false, union: false, items: {}, rest: fresh() };
+export const Void: Type = { kind: 'rec', partial: false, union: true, items: {}, rest: fresh() };
 
 export function Cons(name: string, ...args: Type[]): TCons {
     return { kind: 'cons', name, args };
 }
 
-export function Lam(...types: Type[]): TLam {
-    const result = types.pop()!;
-    return { kind: 'lam', args: types, result }
+export const Num: TCons = Cons('Num')
+export const Str: TCons = Cons('Str')
+
+export function Lam(...types: Type[]): TCons {
+    return { kind: 'cons', name: 'Func', args: types }
 }
 
-export type Type = TCons | TId | TRec | TLam
+export type Type = TCons | TId | TRec | TCons
 
 export interface TypeWalker<T> {
     cons(t: TCons, args: T[]): T,
     id(t: TId): T,
-    rec(t: TRec, record: { [key: string]: T }, rest?: T): T
-    lam(t: TLam, args: T[], result: T,): T
+    rec(t: TRec, record: { [key: string]: T }, rest: T): T
 }
 
 export function walkType<T>(walker: TypeWalker<T>) {
@@ -36,9 +42,7 @@ export function walkType<T>(walker: TypeWalker<T>) {
         } else if (type.kind === 'id') {
             return walker.id(type);
         } else if (type.kind === 'rec') {
-            return walker.rec(type, mapValues(type.record, f), type.rest && f(type.rest));
-        } else if (type.kind === 'lam') {
-            return walker.lam(type, type.args.map(f), f(type.result));
+            return walker.rec(type, mapValues(type.items, f), f(type.rest));
         } else {
             throw new Error(`Impossible`)
         }
@@ -47,31 +51,33 @@ export function walkType<T>(walker: TypeWalker<T>) {
 }
 
 export const formatType = walkType<string>({
-    cons: ({ name }, args) => chalk`{red ${name}}${args.length ? chalk`{red <}${args.join(',')}{red >}` : ''}`,
+    cons: ({ name }, args) => {
+        if (name === 'Func') {
+            const copy = [...args];
+            const result = copy.pop()
+            return chalk`{red <${copy.join(',')}> -> ${result}}`
+        } else {
+            return chalk`{red ${name}}${args.length ? chalk`{red <}${args.join(',')}{red >}` : ''}`
+        }
+    },
     id: ({ name }) => chalk.green(name),
-    rec: (_, rec, rest) => `{${Object.entries(rec).map(arr => arr.join(': ')).join(', ')}${rest ? ` | ${rest}` : ''}}`,
-    lam: (_, args, result) => chalk`{gray (}${args.join(', ')}{gray )} -> ${result}`
+    rec: ({ union, partial }, rec, rest) => `${union ? '[' : '{'}${partial ? `* ` : ''}${Object.entries(rec).map(([name, val]) => union ? `${name}${val === '{}' ? '' : `<${val}>`}` : `${name}: ${val}`).join(union ? ' | ' : ', ')}${union ? ']' : '}'}`
 })
 
 export const apply = walkType<(ctx: Context<Type>) => Type>({
     cons: ({ name }, args) => ctx => ({ kind: 'cons', name, args: args.map(arg => arg(ctx)) }),
     id: id => ctx => ctx[id.name] || id,
-    rec: (_, rec, rest) => ctx => {
-        const t = rest && rest(ctx);
+    rec: ({ union, partial }, rec, rest) => ctx => {
+        const t = rest(ctx);
         const r = mapValues(rec, val => val(ctx));
-        if (t) {
-            if (t.kind === 'id') {
-                return { kind: 'rec', record: r, rest: t };
-            } else if (t.kind === 'rec') {
-                return { kind: 'rec', record: { ...r, ...t.record }, rest: fresh() }
-            } else {
-                throw new Error(`Impossible`)
-            }
+        if (t.kind === 'id') {
+            return { kind: 'rec', union, items: r, rest: t, partial };
+        } else if (t.kind === 'rec' && t.union === union) {
+            return { kind: 'rec', union, items: { ...r, ...t.items }, rest: fresh(), partial: union ? (partial || t.partial) : (partial && t.partial) }
         } else {
-            return { kind: 'rec', record: r }
+            throw new Error(`Impossible`)
         }
-    },
-    lam: (_, args, result) => ctx => ({ kind: 'lam', result: result(ctx), args: args.map(arg => arg(ctx)) })
+    }
 })
 
 export function applySubst(ctx1: Context<Type>, ctx2: Context<Type>) {
@@ -83,16 +89,10 @@ export const free = walkType<Set<string>>({
     cons: (_, args) => new Set([...args.map(arg => [...arg.values()]).flat()]),
     id: id => new Set([id.name]),
     rec: (_, record, rest) => new Set([...Object.values(record).map(x => [...x.values()]).flat(), ...(rest || [])]),
-    lam: (_, args, result) => new Set([...args.map(arg => [...arg.values()]).flat(), ...result.values()])
 })
 
 export function occurs(name: string, t: Type) {
     return free(t).has(name);
-}
-
-let i = 0;
-export function fresh(): TId {
-    return { kind: 'id', name: `T${i++}` }
 }
 
 export function unify(t1: Type, t2: Type): Context<Type> {
@@ -104,19 +104,6 @@ export function unify(t1: Type, t2: Type): Context<Type> {
             const displayName = { rec: 'Record', cons: 'TypeConstructor', id: 'Variable', lam: 'Function' }
             throw new Error(`Types have incompatible kinds: ${displayName[t1.kind]} != ${displayName[t2.kind]}`)
         }
-
-        if (t1.kind == 'lam' && t2.kind === 'lam') {
-            if (t1.args.length !== t2.args.length) {
-                throw new Error(`Function ${formatType(t1)} has different number of arguments (${t1.args.length}) from ${formatType(t2)} ${t2.args.length}`)
-            }
-            let subst = unify(t1.result, t2.result);
-            t1.args.forEach((t1arg, i) => {
-                const t2arg = t2.args[i];
-                subst = applySubst(unify(apply(t1arg)(subst), apply(t2arg)(subst)), subst);
-            })
-            return subst;
-        }
-
 
         if (t1.kind === 'cons' && t2.kind === 'cons') {
             if (t1.name !== t2.name) {
@@ -133,23 +120,32 @@ export function unify(t1: Type, t2: Type): Context<Type> {
         }
 
         if (t1.kind === 'rec' && t2.kind === 'rec') {
-            const intersection = Object.keys(t1.record).filter(k => t2.record[k]);
+            if (t1.union !== t2.union) {
+                throw new Error(`${formatType(t1)} is a ${t1.union ? 'union' : 'record'} while ${formatType(t2)} is a ${t2.union ? 'union' : 'record'}`);
+            }
+            const union = t1.union;
+
+            const intersection = Object.keys(t1.items).filter(k => t2.items[k]);
             let subst = {};
             for (const k of intersection) {
-                const s = unify(t1.record[k], t2.record[k]);
+                const s = unify(t1.items[k], t2.items[k]);
                 subst = applySubst(s, subst);
             }
 
-            const rest = t1.rest && t2.rest && fresh()
-            const t1Minust2 = filterValues(t1.record, (_, k) => !t2.record[k]);
-            const t2Minust1 = filterValues(t2.record, (_, k) => !t1.record[k]);
-            if (t1.rest) {
-                subst = applySubst(unify(t1.rest, { kind: 'rec', record: t2Minust1, rest }), subst);
+            const rest = fresh()
+            subst = applySubst(unify(rest, t1.rest), subst);
+            subst = applySubst(unify(rest, t2.rest), subst);
+
+            const t1Minust2 = filterValues(t1.items, (_, k) => !t2.items[k]);
+            const t2Minust1 = filterValues(t2.items, (_, k) => !t1.items[k]);
+            const partial = union ? (t1.partial || t2.partial) : (t1.partial && t2.partial);
+            if (t1.partial || union) {
+                subst = applySubst(unify(t1.rest, { kind: 'rec', union, items: t2Minust1, rest, partial }), subst);
             } else if (Object.keys(t2Minust1).length) {
                 throw new Error(`${formatType(t1)} is not extensible and lacks properties: ${Object.keys(t2Minust1).join(', ')}`)
             }
-            if (t2.rest) {
-                subst = applySubst(unify(t2.rest, { kind: 'rec', record: t1Minust2, rest }), subst);
+            if (t2.partial || union) {
+                subst = applySubst(unify(t2.rest, { kind: 'rec', union, items: t1Minust2, rest, partial }), subst);
             } else if (Object.keys(t1Minust2).length) {
                 throw new Error(`${formatType(t2)} is not extensible and lacks properties: [${Object.keys(t1Minust2).join(', ')}]`)
             }
@@ -190,17 +186,17 @@ export const infer = walkExpr<(c: Context<Type>) => [Context<Type>, Type]>({
     },
     rec: (_, record) => c => {
         let subst = c;
-        const t = mapValues(record, (v, k) => {
+        const t: { [key: string]: Type } = mapValues(record, (v, k) => {
             const [s, t] = v(subst);
             subst = applySubst(s, subst);
             return t;
         })
-        return [subst, { kind: 'rec', record: t }]
+        return [subst, { kind: 'rec', union: false, items: t, partial: false, rest: fresh() }]
     },
     acc: ({ name }, value) => c => {
         const [s, t] = value(c);
         const typeofProp = fresh();
-        const subst = applySubst(unify(t, { kind: 'rec', record: { [name]: typeofProp }, rest: fresh() }), s);
+        const subst = applySubst(unify(t, { kind: 'rec', union: false, items: { [name]: typeofProp }, rest: fresh(), partial: true }), s);
         return [subst, apply(typeofProp)(subst)];
     },
     list: (_, values) => c => {
@@ -219,7 +215,15 @@ export const infer = walkExpr<(c: Context<Type>) => [Context<Type>, Type]>({
         if (c[name]) {
             return [{}, c[name]]
         } else {
-            throw new Error(`Could not determine type for variable '${name}'`)
+            throw new Error(`Could not determine type for variable '${name}'`);
+        }
+    },
+    cons: ({ name }, value) => c => {
+        if (value) {
+            const [subst, t] = value(c);
+            return [subst, { kind: 'rec', union: true, items: { [name]: apply(t)(subst) }, partial: false, rest: fresh() }]
+        } else {
+            return [{}, { kind: 'rec', union: true, items: { [name]: Unit }, partial: false, rest: fresh() }]
         }
     },
     app: (_, fn, args) => c => {
@@ -232,13 +236,21 @@ export const infer = walkExpr<(c: Context<Type>) => [Context<Type>, Type]>({
             return tArg;
         });
 
-        const uniSubst = unify(apply(tFn)(subst), { kind: 'lam', args: tArgs, result: tResult });
+        const uniSubst = unify(apply(tFn)(subst), { kind: 'cons', name: 'Func', args: [...tArgs, tResult] });
         return [applySubst(uniSubst, subst), apply(tResult)(uniSubst)];
     },
     lam: ({ args }, body) => c => {
         const argTypes = Object.fromEntries(args.map(arg => [arg.name, fresh()]));
         const [subst, t] = body({ ...c, ...argTypes });
-        const finalType: TLam = { kind: 'lam', args: args.map(arg => argTypes[arg.name]), result: t };
+        const finalType: TCons = { kind: 'cons', name: 'Func', args: [...args.map(arg => argTypes[arg.name]), t] };
         return [subst, apply(finalType)(subst)]
     },
 });
+
+
+export const type = delay(() => alt<Type>(tCons, tlam, tId, tRec));
+
+export const tCons: Parser<TCons> = map(seq(upperName, bet(langle, rep(type), rangle)), ([name, args]) => ({ kind: 'cons', name, args }))
+export const tlam: Parser<TCons> = map(seq(bet(langle, rep(type), rangle), key('->'), type), ([args, , result]) => ({ kind: 'cons', name: 'Func', args: [...args, result], }))
+export const tId: Parser<TId> = map(lowerName, name => ({ kind: 'id', name }))
+export const tRec: Parser<TRec> = map(bet(lcurly, seq(rep(map(seq(lowerName, colon, type), ([k, , v]) => [k, v] as [string, Type])), opt(key('*'))), rcurly), ([entries, partial]) => ({ kind: 'rec', union: false, items: Object.fromEntries(entries), rest: fresh(), partial: !!partial }))

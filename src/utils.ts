@@ -29,3 +29,7 @@ export function filterValues<A>(obj: { [key: string]: A }, f: (a: A, k: string) 
     return Object.fromEntries(Object.entries(obj).filter(([k, v]) => f(v, k)))
 }
 
+
+export function isUppercase(str: string) {
+    return str[0].toUpperCase() === str[0];
+}
