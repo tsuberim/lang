@@ -1,10 +1,16 @@
 {
-  "name": "lang",
+  "name": "@tsuberim/lang",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "private": false,
+  "main": "build/index.js",
+  "files": ["build"],
+  "bin": {
+    "lang": "build/index.js"
+  },
   "scripts": {
     "start": "ts-node src/index.ts",
+    "build": "tsc",
     "test": "mocha --recursive -r ts-node/register src/**/*.spec.ts"
   },
   "author": "",

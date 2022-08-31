@@ -54,7 +54,7 @@ export async function repl() {
         help() {
             console.log(
                 dedent`
-                    Welcome to ${chalk.magenta.bold('mylang')} (working title)!
+                    Welcome to ${chalk.magenta.bold('mylang@' + require('../package.json').version)} (working title)!
                     ${chalk.magenta.bold('mylang')} is a ${chalk.bold('purly-functional')}, ${chalk.bold('statically-typed')} language that compiles to ${chalk.bold('WASM')}.
 
                     This is a small tutorial guiding you through the language.
@@ -90,6 +90,7 @@ export async function repl() {
         }
     }
 
+    commands.help();
     while (true) {
         const text: string = await new Promise(res => rl.question(chalk.gray('> '), res));
         try {
