@@ -53,7 +53,7 @@ export const patlist: Parser<PatList> = map(bet(lbracket, sep(pattern, comma), r
 export const lam: Parser<Lam> = map(seq(backslash, alt(bet(lbrace, sep(id, comma), rbrace), map(id, x => [x])), arrow, expr), ([, args, , body], span) => ({ type: 'lam', span, args, body }))
 export const unary: Parser<App> = map(seq(map(sym, (name, span) => ({ type: 'id', span, name } as Id)), expr), ([fn, e], span) => ({ type: 'app', span, fn, args: [e] }))
 
-export const match: Parser<Match> = map(seq(key('match'), expr, sep1(map(seq(key('when'), pattern, arrow, expr), ([, ptn, , expr]) => [ptn, expr] as [Pattern, Expr]), comma)), ([, expr, cases], span) => ({ type: 'match', span, value: expr, cases }))
+export const match: Parser<Match> = map(seq(key('match'), expr, rep1(map(seq(key('when'), pattern, arrow, expr), ([, ptn, , expr]) => [ptn, expr] as [Pattern, Expr]))), ([, expr, cases], span) => ({ type: 'match', span, value: expr, cases }))
 
 export const nonLeftRecursive: Parser<Expr> = alt<Expr>(
     match,

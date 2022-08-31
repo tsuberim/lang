@@ -208,7 +208,9 @@ export const infer = walkExpr<(c: Context<Type>) => [Context<Type>, Type]>({
     },
     cons: ({ name }, value) => c => {
         if (value) {
-            const [subst, t] = value(c);
+            let subst = c;
+            const [s, t] = value(c);
+            subst = applySubst(s, c);
             return [subst, { kind: 'rec', union: true, items: { [name]: apply(t)(subst) }, partial: false, rest: fresh() }]
         } else {
             return [{}, { kind: 'rec', union: true, items: { [name]: Unit }, partial: false, rest: fresh() }]
