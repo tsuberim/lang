@@ -26,7 +26,7 @@ export class BufferedString {
     slice(from: number, to: number): string {
         const more = to - this.acc.length;
         if (more > 0) {
-            const chunk = this.readable.read(more);
+            const chunk: string = this.readable.read(more);
             if (chunk) {
                 this.acc += chunk;
             }
@@ -41,14 +41,6 @@ export class Source {
     static DEDENT = '\x02';
 
     constructor(private str: BufferedString, public pos: Pos = { chars: 0, line: 0, column: 0, indent: 0 }) { }
-
-    static fromString(str: string) {
-        return Readable.from(str);
-    }
-
-    static fromFile(path: string) {
-        return fs.createReadStream(path, 'utf-8');
-    }
 
     skip(n: number): Source {
         const str = this.peek(n);
@@ -76,7 +68,7 @@ export class Source {
 
 export class ParseError extends Error {
     constructor(source: Source, msg: string) {
-        super(`'${chalk.bold(source.peek(5))}...' (${formatPos(source.pos)}) - ${msg}`)
+        super(`'${chalk.bold(source.peek(20))}...' (${formatPos(source.pos)}) - ${msg}`)
     }
 }
 
@@ -86,14 +78,25 @@ export function displayName<T>(parser: Parser<T>): string {
     return parser.displayName || '<unnamed>';
 }
 
-export function named<T>(name: string, parser: Parser<T>): Parser<T> {
-    const f = (input: Source) => parser(input);
+export function named<T>(name: string, parser: Parser<T>, msg?: string): Parser<T> {
+    const f = (input: Source) => {
+        if (msg) {
+            try {
+                return parser(input);
+            } catch (e) {
+                throw new ParseError(input, msg)
+            }
+        } else {
+
+            return parser(input);
+        }
+    };
     f.displayName = name
     return f
 }
 
 export function parse<T>(parser: Parser<T>, input: string): T {
-    return parser(new Source(new BufferedString(ReadStream.from(input))))[0];
+    return map(seq(parser, end), ([x]) => x)(new Source(new BufferedString(ReadStream.from(input))))[0];
 }
 
 export function matches<T>(parser: Parser<T>, input: string): boolean {
@@ -106,7 +109,7 @@ export function matches<T>(parser: Parser<T>, input: string): boolean {
 }
 
 export function parseFile<T>(parser: Parser<T>, path: string): T {
-    return parser(new Source(new BufferedString(fs.createReadStream(path, 'utf-8'))))[0];
+    return map(seq(parser, end), ([x]) => x)(new Source(new BufferedString(fs.createReadStream(path, 'utf-8'))))[0];
 }
 
 export function lit(str: string): Parser<string> {
@@ -139,9 +142,10 @@ export function range(from: string, to: string): Parser<string> {
 }
 
 export function notChar(...chars: string[]): Parser<string> {
+    const chs = [...chars, Source.END, Source.INDENT, Source.DEDENT]
     return named(`[^${chars.join('')}]`, source => {
         const char = source.peek(1);
-        if (!chars.includes(char)) {
+        if (!chs.includes(char)) {
             return [char, source.skip(1)]
         } else {
             throw new ParseError(source, `Expected a char not from: [${chars.join(',')}]`)
@@ -207,8 +211,8 @@ export function bet<T>(left: Parser<any>, parser: Parser<T>, right: Parser<any>)
     return map(seq(left, parser, right), ([_, x]) => x);
 }
 
-export function opt<T>(parser: Parser<T>): Parser<T | null> {
-    return alt(parser, map(eps, _ => null))
+export function opt<T>(parser: Parser<T>): Parser<T | undefined> {
+    return alt(parser, map(eps, _ => undefined))
 }
 
 export function key(str: string) {
@@ -227,9 +231,9 @@ export function delay<T>(thunk: () => Parser<T>): Parser<T> {
 }
 
 
-export const end = named('END', lit(Source.END));
-export const indent = named('INDENT', lit(Source.INDENT));
-export const dedent = named('DEDENT', lit(Source.DEDENT));
+export const end = named('END', lit(Source.END), `Expected END`);
+export const indent = named('INDENT', lit(Source.INDENT), `Expected INDENT`);
+export const dedent = named('DEDENT', lit(Source.DEDENT), `Expected DEDENT`);
 
 export const lowercase = range('a', 'z');
 export const uppercase = range('A', 'Z');
@@ -245,7 +249,7 @@ export const space = named('\\s', alt(lit(' '), lit('\n'), lit('\t')));
 export const spaces = rep(space);
 export const spaces1 = rep1(space);
 
-export const eps = named('ε', lit(''));
+export const eps = named('ε', (source) => [true, source]);
 
 export const lbrace = key('(');
 export const rbrace = key(')');
@@ -263,7 +267,7 @@ export const at = key('@');
 export const arrow = key('->');
 export const dot = key('.');
 export const equal = key('=');
-export const newline = key('\n');
+export const newline = alt(key('\r\n'), key('\n'));
 
 export const name = named('id', map(seq(letter, rep(alt(letter, digit))), ([start, chars]) => start + chars.join('')));
 export const upperName = named('id', map(seq(uppercase, rep(alt(letter, digit))), ([start, chars]) => start + chars.join('')));

@@ -1,4 +1,4 @@
-import { walkExpr } from "./expr";
+import { Pattern, walkExpr } from "./expr";
 import { mapValues, Context, isUppercase } from "./utils";
 import chalk from 'chalk';
 
@@ -28,7 +28,7 @@ export function walkValue<T>(walker: ValueWalker<T>) {
         } else if (typeof val === 'string') {
             return walker.str(val)
         } else if (typeof val === 'object' && !Array.isArray(val)) {
-            if((val as any)[_tagSymbol]) {
+            if ((val as any)[_tagSymbol]) {
                 const v = val as VTag;
                 return walker.tag(v, v.value ? f(v.value) : undefined)
             } else {
@@ -47,21 +47,77 @@ export function walkValue<T>(walker: ValueWalker<T>) {
 
 export const formatValue = walkValue({
     num: n => chalk.yellow(n.toString()),
-    str: str => chalk.blueBright('`' + str + '`'),
+    str: str => chalk.blueBright(`'` + str + `'`),
     lst: (_, vals) => chalk`{cyan [} ${vals.join(', ')} {cyan ]}`,
     rec: (_, rec) => chalk.cyan('{ ') + Object.entries(rec).map(([name, value]) => chalk.cyan(name) + chalk.cyan(': ') + value).join(', ') + chalk.cyan(' }'),
-    tag: ({[_tagSymbol]: name}, value) => value ? chalk`${name}(${value})` : name,
+    tag: ({ [_tagSymbol]: name }, value) => value ? chalk`${name}(${value})` : name,
     clo: f => chalk.magenta(`<closure>`)
 });
 
+export function match(ptn: Pattern, value: Value): Context<Value> {
+    if (ptn.type === 'lit') {
+        if (ptn.value === value) {
+            return {}
+        } else {
+            throw Error(`${ptn.value} != ${formatValue(value)}`)
+        }
+    } else if (ptn.type === 'id') {
+        return { [ptn.name]: value };
+    } else if (ptn.type === 'patcons') {
+        const consMatch = typeof value === 'object' && (value as any)[_tagSymbol] === ptn.name;
+        if (consMatch) {
+            const val = value as VTag;
+            if (!!val.value === !!ptn.value) {
+                return (!ptn.value && {}) || match(ptn.value!, val.value!);
+            } else {
+                throw new Error('TODO');
+            }
+        } else {
+            throw new Error(`${formatValue(value)} is not a tag of name ${ptn.name}`)
+        }
+    } else if (ptn.type === 'patlist') {
+        if (Array.isArray(value)) {
+            const substs = ptn.values.map((p, i) => match(p, value[i]));
+            const out = {};
+            for (const s of substs) {
+                Object.assign(out, s)
+            };
+            return out;
+        } else {
+            throw new Error(`Expected a list, got ${formatValue(value)}`)
+        }
+    } else if (ptn.type === 'patrec') {
+        if (typeof value === 'object' && !Array.isArray(value)) {
+            const substs = Object.entries(ptn.record).map(([k, p]) => match(p, value[k]));
+            const out = {};
+            for (const s of substs) {
+                Object.assign(out, s)
+            };
+            return out;
+        } else {
+            throw new Error(`Expected a record, got ${formatValue(value)}`)
+        }
+    } else {
+        throw new Error(`Impossible`)
+    }
+}
+
 export const evaluate = walkExpr<(ctx: Context<Value>) => Value>({
     lit: ({ value }) => _ => value,
-    str: (_, parts) => ctx => parts.map(part => typeof part === 'string' ? part : part(ctx)).join(''),
     list: (_, values) => ctx => values.map(val => val(ctx)),
     rec: (_, record) => ctx => mapValues(record, v => v(ctx)),
-    acc: ({ name }, val) => ctx => (val(ctx) as VRec)[name],
-    id: ({ name }) => ctx => isUppercase(name) ? (value: Value) => ({tag: name, value}) : ctx[name],
-    cons: ({name}, value) => ctx => ({[_tagSymbol]: name, value: value && value(ctx)} as VTag),
+    id: ({ name }) => ctx => isUppercase(name) ? (value: Value) => ({ [_tagSymbol]: name, value }) : ctx[name],
+    cons: ({ name }, value) => ctx => ({ [_tagSymbol]: name, value: value && value(ctx) } as VTag),
+    match: (_, value, cases) => ctx => {
+        const val = value(ctx);
+        for (const [ptn, v] of cases) {
+            try {
+                const subst = match(ptn, val);
+                return v({ ...ctx, ...subst })
+            } catch (e) { }
+        }
+        throw new Error(`No case matched`)
+    },
     app: (_, fn, args) => ctx => (fn(ctx) as Function)(...args.map(arg => arg(ctx))),
     lam: ({ args }, body) => ctx => (...vals: any[]) => body({ ...ctx, ...Object.fromEntries(args.map((arg, i) => [arg.name, vals[i]])) })
 })

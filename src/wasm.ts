@@ -5,12 +5,11 @@ import dedent from 'dedent';
 export class WatEmitter {
     #compile = walkExpr<string>({
         lit: ({ value }) => dedent`i32.const ${value}`,
-        str: (_, parts) => dedent`unreachable`,
         rec: (_, record) => dedent`unreachable`,
         cons: (_, value) => dedent`unreachable`,
-        acc: ({ name }, e) => dedent`unreachable`,
         list: (_, values) => dedent`unreachable`,
         id: ({ name }) => dedent`get_local $${name}`,
+        match: () => dedent`unreachable`,
         app: (e, fn, args) => {
             const t = this.type(args.length);
             return `

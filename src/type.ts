@@ -1,5 +1,5 @@
 
-import { Expr, walkExpr } from "./expr";
+import { Expr, freeVars, toExpr, walkExpr } from "./expr";
 import { mapValues, Context, filterValues, isUppercase } from "./utils";
 import chalk from 'chalk';
 import { alt, bet, colon, delay, key, langle, lcurly, lowerName, map, opt, Parser, pipe, rangle, rcurly, rep, seq, upperName } from "./parser";
@@ -18,6 +18,10 @@ export const Void: Type = { kind: 'rec', partial: false, union: true, items: {},
 
 export function Cons(name: string, ...args: Type[]): TCons {
     return { kind: 'cons', name, args };
+}
+
+export function List(type: Type): TCons {
+    return Cons('List', type);
 }
 
 export const Num: TCons = Cons('Num')
@@ -67,7 +71,7 @@ export const formatType = walkType<string>({
             const k = Object.keys(rec)[0];
             return formatCons(k, rec[k]);
         }
-        return `${union ? '[' : '{'}${partial ? `* ` : ''}${Object.entries(rec).map(([name, val]) => union ? formatCons(name, val) : `${name}: ${val}`).join(union ? ' | ' : ', ')}${union ? ']' : '}'}`
+        return `${union ? '[' : '{'}${partial ? `* ` : ''}${Object.entries(rec).map(([name, val]) => union ? formatCons(name, val) : `${name}: ${val}`).join(', ')}${union ? ']' : '}'}`
     }
 })
 
@@ -103,66 +107,62 @@ export function occurs(name: string, t: Type) {
 }
 
 export function unify(t1: Type, t2: Type): Context<Type> {
-    try {
-        if (t1.kind === 'id') { return bind(t1.name, t2) }
-        if (t2.kind === 'id') { return bind(t2.name, t1) }
+    if (t1.kind === 'id') { return bind(t1.name, t2) }
+    if (t2.kind === 'id') { return bind(t2.name, t1) }
 
-        if (t1.kind !== t2.kind) {
-            const displayName = { rec: 'Record', cons: 'TypeConstructor', id: 'Variable', lam: 'Function' }
-            throw new Error(`Types have incompatible kinds: ${displayName[t1.kind]} != ${displayName[t2.kind]}`)
-        }
-
-        if (t1.kind === 'cons' && t2.kind === 'cons') {
-            if (t1.name !== t2.name) {
-                throw new Error(`Type constructors are incompatible ${t1.name} != ${t2.name}`)
-            }
-
-            if (t1.args.length !== t2.args.length) {
-                throw new Error(`Type ${formatType(t1)} has different number of arguments (${t1.args.length}) from ${formatType(t2)} ${t2.args.length}`)
-            }
-
-            let subst = {};
-            t1.args.forEach((t, i) => subst = applySubst(unify(apply(t)(subst), apply(t2.args[i])(subst)), subst))
-            return subst;
-        }
-
-        if (t1.kind === 'rec' && t2.kind === 'rec') {
-            if (t1.union !== t2.union) {
-                throw new Error(`${formatType(t1)} is a ${t1.union ? 'union' : 'record'} while ${formatType(t2)} is a ${t2.union ? 'union' : 'record'}`);
-            }
-            const union = t1.union;
-
-            const intersection = Object.keys(t1.items).filter(k => t2.items[k]);
-            let subst = {};
-            for (const k of intersection) {
-                const s = unify(t1.items[k], t2.items[k]);
-                subst = applySubst(s, subst);
-            }
-
-            const rest = fresh()
-            subst = applySubst(unify(rest, t1.rest), subst);
-            subst = applySubst(unify(rest, t2.rest), subst);
-
-            const t1Minust2 = filterValues(t1.items, (_, k) => !t2.items[k]);
-            const t2Minust1 = filterValues(t2.items, (_, k) => !t1.items[k]);
-            const partial = union ? (t1.partial || t2.partial) : (t1.partial && t2.partial);
-            if (t1.partial || union) {
-                subst = applySubst(unify(t1.rest, { kind: 'rec', union, items: t2Minust1, rest, partial }), subst);
-            } else if (Object.keys(t2Minust1).length) {
-                throw new Error(`${formatType(t1)} is not extensible and lacks properties: ${Object.keys(t2Minust1).join(', ')}`)
-            }
-            if (t2.partial || union) {
-                subst = applySubst(unify(t2.rest, { kind: 'rec', union, items: t1Minust2, rest, partial }), subst);
-            } else if (Object.keys(t1Minust2).length) {
-                throw new Error(`${formatType(t2)} is not extensible and lacks properties: [${Object.keys(t1Minust2).join(', ')}]`)
-            }
-            return subst;
-        }
-
-        throw new Error(`could not unify types: ${formatType(t1)} ~ ${formatType(t2)}`)
-    } catch (e) {
-        throw new Error(`Could not unify types: ${formatType(t1)} ~ ${formatType(t2)}\n\tbecause ${e.message}`)
+    if (t1.kind !== t2.kind) {
+        const displayName = { rec: 'Record', cons: 'TypeConstructor', id: 'Variable', lam: 'Function' }
+        throw new Error(`Types have incompatible kinds: ${displayName[t1.kind]} != ${displayName[t2.kind]}`)
     }
+
+    if (t1.kind === 'cons' && t2.kind === 'cons') {
+        if (t1.name !== t2.name) {
+            throw new Error(`Type constructors are incompatible ${t1.name} != ${t2.name}`)
+        }
+
+        if (t1.args.length !== t2.args.length) {
+            throw new Error(`Type ${formatType(t1)} has different number of arguments (${t1.args.length}) from ${formatType(t2)} ${t2.args.length}`)
+        }
+
+        let subst = {};
+        t1.args.forEach((t, i) => subst = applySubst(unify(apply(t)(subst), apply(t2.args[i])(subst)), subst))
+        return subst;
+    }
+
+    if (t1.kind === 'rec' && t2.kind === 'rec') {
+        if (t1.union !== t2.union) {
+            throw new Error(`${formatType(t1)} is a ${t1.union ? 'union' : 'record'} while ${formatType(t2)} is a ${t2.union ? 'union' : 'record'}`);
+        }
+        const union = t1.union;
+
+        const intersection = Object.keys(t1.items).filter(k => t2.items[k]);
+        let subst = {};
+        for (const k of intersection) {
+            const s = unify(t1.items[k], t2.items[k]);
+            subst = applySubst(s, subst);
+        }
+
+        const rest = fresh()
+        subst = applySubst(unify(rest, t1.rest), subst);
+        subst = applySubst(unify(rest, t2.rest), subst);
+
+        const t1Minust2 = filterValues(t1.items, (_, k) => !t2.items[k]);
+        const t2Minust1 = filterValues(t2.items, (_, k) => !t1.items[k]);
+        const partial = union ? (t1.partial || t2.partial) : (t1.partial && t2.partial);
+        if (t1.partial || union) {
+            subst = applySubst(unify(t1.rest, { kind: 'rec', union, items: t2Minust1, rest, partial }), subst);
+        } else if (Object.keys(t2Minust1).length) {
+            throw new Error(`${formatType(t1)} is not extensible and lacks properties: ${Object.keys(t2Minust1).join(', ')}`)
+        }
+        if (t2.partial || union) {
+            subst = applySubst(unify(t2.rest, { kind: 'rec', union, items: t1Minust2, rest, partial }), subst);
+        } else if (Object.keys(t1Minust2).length) {
+            throw new Error(`${formatType(t2)} is not extensible and lacks properties: [${Object.keys(t1Minust2).join(', ')}]`)
+        }
+        return subst;
+    }
+
+    throw new Error(`Could not unify types: ${formatType(t1)} ~ ${formatType(t2)}`)
 }
 
 export function bind(name: string, t: Type): Context<Type> {
@@ -177,20 +177,7 @@ export function bind(name: string, t: Type): Context<Type> {
 
 
 export const infer = walkExpr<(c: Context<Type>) => [Context<Type>, Type]>({
-    lit: ({ value }) => _ => [{}, Num], // TODO: when there are other types
-    str: (_, parts) => c => {
-        let subst = c;
-        parts.forEach(part => {
-            if (typeof part !== 'string') {
-                const [s, t] = part(subst);
-                subst = applySubst(s, subst);
-                const s2 = unify(t, Str)
-                subst = applySubst(s2, subst);
-            }
-        })
-
-        return [subst, Str]
-    },
+    lit: ({ value }) => _ => [{}, typeof value === 'number' ? Num : Str],
     rec: (_, record) => c => {
         let subst = c;
         const t: { [key: string]: Type } = mapValues(record, (v, k) => {
@@ -199,12 +186,6 @@ export const infer = walkExpr<(c: Context<Type>) => [Context<Type>, Type]>({
             return t;
         })
         return [subst, { kind: 'rec', union: false, items: t, partial: false, rest: fresh() }]
-    },
-    acc: ({ name }, value) => c => {
-        const [s, t] = value(c);
-        const typeofProp = fresh();
-        const subst = applySubst(unify(t, { kind: 'rec', union: false, items: { [name]: typeofProp }, rest: fresh(), partial: true }), s);
-        return [subst, apply(typeofProp)(subst)];
     },
     list: (_, values) => c => {
         let subst = {};
@@ -232,6 +213,23 @@ export const infer = walkExpr<(c: Context<Type>) => [Context<Type>, Type]>({
         } else {
             return [{}, { kind: 'rec', union: true, items: { [name]: Unit }, partial: false, rest: fresh() }]
         }
+    },
+    match: (e, expr, cases) => c => {
+        let subst = c;
+        const out = fresh();
+        const [s,t] = expr(c);
+        subst = applySubst(s, subst);
+
+        for(const [ptn, e] of cases) {
+            const fv = freeVars(toExpr(ptn));
+            const [substInsideCase, ptnType] = infer(toExpr(ptn))(Object.fromEntries([...fv].map(v => [v, fresh()])));
+            subst = applySubst(unify(t, ptnType), subst);
+            const [s, tE] = e({...subst, ...substInsideCase});
+            subst = applySubst(s, subst)
+            subst = applySubst(unify(apply(tE)(subst), apply(out)(subst)), subst);
+        }
+
+        return [subst, apply(out)(subst)];
     },
     app: (_, fn, args) => c => {
         const tResult = fresh();

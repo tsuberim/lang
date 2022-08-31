@@ -31,5 +31,7 @@ export function filterValues<A>(obj: { [key: string]: A }, f: (a: A, k: string) 
 
 
 export function isUppercase(str: string) {
-    return str[0].toUpperCase() === str[0];
+    const char = str[0];
+    const isLetter = 'a' <= char && char <= 'Z';
+    return isLetter && (char.toUpperCase() === char);
 }
