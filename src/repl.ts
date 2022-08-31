@@ -45,6 +45,7 @@ export async function repl() {
         `You can invent a new type consturctor by using an ${chalk.bold('uppercase')} name, try: ${chalk.yellow.italic('Person({name: `John`, age: 23})')}`,
         `This is called a ${chalk.bold('tag')}, tags allow us to make a union of types, try: ${chalk.yellow.italic('[Person({name: `John`, age: 23}), Baby]')}`,
         `? Whats the type of this expression ${chalk.yellow.bold('[\\x -> x.bar, \\x -> x.foo]')}`,
+        `We can use a {magenta.bold match} expression to match on a value, try: {yellow.bold match Hot(Very) when Hot(x) -> x when ignored -> Not}`,
         `END (starting over...)`
     ];
     let helpIdx = 0;
