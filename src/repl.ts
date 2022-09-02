@@ -3,11 +3,11 @@ import { createInterface } from 'readline';
 import { parse, alt, map, spaces, lowerName, seq, lit, opt } from "./parser";
 import { formatType, infer } from "./type";
 import { mapValues } from "./utils";
-import { evaluate, formatValue } from "./value";
+import { evaluate, formatValue, VClo } from "./value";
 import chalk from "chalk";
 import { runModule, toWasm, WatEmitter } from "./wasm";
 import { evaluateImport, Item, item } from "./module";
-import { context as std } from './std';
+import { context as std, runTask, Task } from './std';
 import dedent from "dedent";
 
 export type Nothing = { type: 'nothing' };
@@ -92,19 +92,25 @@ export async function repl() {
 
     commands.help();
     while (true) {
-        const text: string = await new Promise(res => rl.question(chalk.gray('> '), res));
+        let text: string = await new Promise(res => rl.question(chalk.gray('> '), res));
         try {
             const cmd = parse(command, text);
             if (cmd.type === 'assignment' || cmd.type === 'evaluate') {
                 const expression = cmd.type === 'assignment' ? cmd.expr : cmd.expr;
                 const name = cmd.type === 'assignment' ? cmd.id.name : undefined;
-                const [c, type] = infer(expression)(typeContext);
-                const value = evaluate(expression)(valueContext);
+                let [, type] = infer(expression)(typeContext);
+                let value = evaluate(expression)(valueContext);
+                if(type.kind === 'cons' && type.name === 'Task') {
+                    value = await runTask(value as Task);
+                    type = type.args[0];
+                }
                 if (name) {
                     valueContext[name] = value;
                     typeContext[name] = type
                 }
-                console.log(chalk`${formatValue(value)} {gray :} ${formatType(type)}`)
+                if(value !== null) {
+                    console.log(chalk`${formatValue(value)} {gray :} ${formatType(type)}`)
+                }
             } else if (cmd.type === 'import') {
                 const out = await evaluateImport(cmd);
                 const rec = mapValues(out, x => x[0]);

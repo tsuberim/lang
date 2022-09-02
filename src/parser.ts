@@ -68,7 +68,7 @@ export class Source {
 
 export class ParseError extends Error {
     constructor(source: Source, msg: string) {
-        super(`'${chalk.bold(source.peek(20))}...' (${formatPos(source.pos)}) - ${msg}`)
+        super(`ParseError: '${chalk.bold(source.peek(20))}...' (${formatPos(source.pos)}) - ${msg}`)
     }
 }
 
@@ -261,6 +261,7 @@ export const langle = key('<');
 export const rangle = key('>');
 export const comma = key(',');
 export const colon = key(':');
+export const semicolon = key(';')
 export const pipe = key('|');
 export const backslash = key('\\');
 export const at = key('@');
@@ -272,4 +273,4 @@ export const newline = alt(key('\r\n'), key('\n'));
 export const name = named('id', map(seq(letter, rep(alt(letter, digit))), ([start, chars]) => start + chars.join('')));
 export const upperName = named('id', map(seq(uppercase, rep(alt(letter, digit))), ([start, chars]) => start + chars.join('')));
 export const lowerName = named('id', map(seq(lowercase, rep(alt(letter, digit))), ([start, chars]) => start + chars.join('')));
-export const sym = named('symbol', map(seq(spaces, rep1(alt(...[...'!@#%~^&*-+=/?'].map(char => lit(char)))), spaces), ([, x]) => x.join('')));
+export const sym = named('symbol', map(seq(spaces, rep1(alt(...[...'!@#%~^&*-+/><?'].map(char => lit(char)))), spaces), ([, x]) => x.join('')));

@@ -1,5 +1,5 @@
 import { mapValues } from './utils';
-import { delay, alt, map, Parser, bet, sep, seq, rep, lit, lbrace, rbrace, name, arrow, backslash, colon, comma, lbracket, lcurly, rbracket, rcurly, eps, sym, dot, digits1, spaces, notChar, rep1, matches, Span, lowerName, upperName, opt, Source, key, sep1 } from './parser';
+import { delay, alt, map, Parser, bet, sep, seq, rep, lit, lbrace, rbrace, name, arrow, backslash, colon, comma, lbracket, lcurly, rbracket, rcurly, eps, sym, dot, digits1, spaces, notChar, rep1, matches, Span, lowerName, upperName, opt, Source, key, sep1, semicolon } from './parser';
 
 export type Lit = { type: 'lit', span: Span, value: number | string }
 export type Id = { type: 'id', span: Span, name: string }
@@ -11,20 +11,21 @@ export type PatCons = { type: 'patcons', span: Span, name: string, value?: Patte
 export type PatRec = { type: 'patrec', span: Span, record: { [name: string]: Pattern } }
 export type PatList = { type: 'patlist', span: Span, values: Pattern[] }
 
+export type Acc = {type: 'acc', span: Span, rec: Expr, prop: string};
 export type App = { type: 'app', span: Span, fn: Expr, args: Expr[] }
 export type Lam = { type: 'lam', span: Span, args: Id[], body: Expr }
 
-export type Match = { type: 'match', span: Span, value: Expr, cases: [Pattern, Expr][] }
+export type Match = { type: 'match', span: Span, value: Expr, cases: [PatCons, Expr][], otherwise?: Expr }
 
 export type Pattern = Lit | Id | PatCons | PatRec | PatList
-export type Expr = Lit | Id | Cons | Rec | List | Pattern | Match | App | Lam
+export type Expr = Lit | Id | Cons | Rec | List | Pattern | Match | Acc | App | Lam
 
 export const strPart = map(rep1(notChar(`'`, '\{', '\}')), arr => arr.join(''));
 
 export const expr: Parser<Expr> = delay(() => map(seq(nonLeftRecursive, leftRecursive), ([e, f]) => f(e)))
 
 // non-left recursive
-export const num: Parser<Lit> = map(digits1, (x, span) => ({ type: 'lit', span, value: Number(x) }));
+export const num: Parser<Lit> = map(seq(map(opt(lit('-')), x => x || ''), digits1, map(opt(seq(lit('.'), digits1)), x => x ? x.join('') : '')), ([x, y, z], span) => ({ type: 'lit', span, value: Number(x + y + z) }));
 export const id: Parser<Id> = map(alt(lowerName, sym), (name, span) => ({ type: 'id', span, name }));
 
 export const str: Parser<Lit> = map(strPart, (str, span) => ({ type: 'lit', span, value: str }));
@@ -53,7 +54,7 @@ export const patlist: Parser<PatList> = map(bet(lbracket, sep(pattern, comma), r
 export const lam: Parser<Lam> = map(seq(backslash, alt(bet(lbrace, sep(id, comma), rbrace), map(id, x => [x])), arrow, expr), ([, args, , body], span) => ({ type: 'lam', span, args, body }))
 export const unary: Parser<App> = map(seq(map(sym, (name, span) => ({ type: 'id', span, name } as Id)), expr), ([fn, e], span) => ({ type: 'app', span, fn, args: [e] }))
 
-export const match: Parser<Match> = map(seq(key('match'), expr, rep1(map(seq(key('when'), pattern, arrow, expr), ([, ptn, , expr]) => [ptn, expr] as [Pattern, Expr]))), ([, expr, cases], span) => ({ type: 'match', span, value: expr, cases }))
+export const match: Parser<Match> = map(seq(key('when'), expr, key('is'), sep1(map(seq(patcons, arrow, expr), ([ptn, , expr]) => [ptn, expr] as [PatCons, Expr]), semicolon), opt(map(seq(key('else'), expr), x => x && x[1]))), ([, expr, , cases, otherwise], span) => ({ type: 'match', span, value: expr, cases, otherwise }))
 
 export const nonLeftRecursive: Parser<Expr> = alt<Expr>(
     match,
@@ -71,9 +72,16 @@ export const nonLeftRecursive: Parser<Expr> = alt<Expr>(
 // left recursive
 export const prefix_app: Parser<(e: Expr) => App> = map(bet(lbrace, sep(expr, comma), rbrace), (args, span) => fn => ({ type: 'app', span, fn, args }));
 export const infix_app: Parser<(e: Expr) => App> = map(seq(map(sym, (name, span) => ({ type: 'id', span, name } as Id)), expr), ([id, arg2], span) => arg1 => ({ type: 'app', span, fn: id, args: [arg1, arg2] }))
+export const acc: Parser<(e: Expr) => Acc> = map(seq(dot, name), ([, n], span) => e => ({
+    type: 'acc',
+    span,
+    rec: e,
+    prop: n
+}))
 
 export const leftRecursive: Parser<(e: Expr) => Expr> = alt(
     map(seq(alt<(e: Expr) => Expr>(
+        acc,
         prefix_app,
         infix_app,
     ), delay(() => leftRecursive)), ([f, g]) => e => g(f(e))),
@@ -87,7 +95,8 @@ export interface ExprWalker<T> {
     cons(e: Cons, value?: T): T,
     id(e: Id): T,
     app(e: App, fn: T, args: T[]): T,
-    match(e: Match, value: T, cases: [Pattern, T][]): T,
+    acc(e: Acc, rec: T): T,
+    match(e: Match, value: T, cases: [PatCons, T][], otherwise?: T): T,
     lam(e: Lam, body: T): T,
 }
 
@@ -109,9 +118,11 @@ export function walkExpr<T>(walker: ExprWalker<T>) {
             } else if (expr.type === 'cons') {
                 t = walker.cons(expr, expr.value && f(expr.value))
             } else if (expr.type === 'match') {
-                t = walker.match(expr, f(expr.value), expr.cases.map(([ptn, e]) => [ptn, f(e)] as [Pattern, T]))
+                t = walker.match(expr, f(expr.value), expr.cases.map(([ptn, e]) => [ptn, f(e)] as [PatCons, T]), expr.otherwise && f(expr.otherwise))
             } else if (expr.type === 'app') {
                 t = walker.app(expr, f(expr.fn), expr.args.map(arg => f(arg)))
+            } else if (expr.type === 'acc') {
+                t = walker.acc(expr, f(expr.rec))
             } else if (expr.type === 'lam') {
                 t = walker.lam(expr, f(expr.body))
             } else {
@@ -142,10 +153,11 @@ export const freeVars: (e: Expr) => Set<String> = walkExpr<Set<string>>({
     list: (_, values) => new Set(...values.map(set => [...set]).flat()),
     id: ({ name }) => new Set([name]),
     cons: ({ name }, value) => value || new Set(),
-    match: (_, value, cases) => new Set(...value, cases.map(([p, e]) => {
+    match: (_, value, cases, otherwise) => new Set(...value, cases.map(([p, e]) => {
         const args = freeVars(toExpr(p));
-        return new Set([...e].filter(x => !args.has(x)))
+        return new Set([...e, ...(otherwise || [])].filter(x => !args.has(x)))
     })),
+    acc: (_, rec) => rec,
     app: (_, fn, args) => new Set(...fn, ...args.map(set => [...set]).flat()),
     lam: ({ args }, body) => new Set([...body].filter(x => !args.find(arg => arg.name === x)))
 })
@@ -156,7 +168,8 @@ export const format: (e: Expr) => string = walkExpr<string>({
     list: (_, values) => `[${values.join(', ')}]`,
     id: ({ name }) => name,
     cons: ({ name }, value) => value ? `${name}(${value})` : name,
-    match: (_, value, cases) => `match ${value}\n\t${cases.map(([ptn, e]) => `when ${format(toExpr(ptn))} -> ${e}`).join('\n\t')}`,
+    match: (_, value, cases, otherwise) => `when ${value} is\n\t${cases.map(([ptn, e]) => `${format(toExpr(ptn))} -> ${e}`).join(';\n\t')}${otherwise ? `else ${otherwise}` :''}`,
     app: (_, fn, args) => matches(sym, fn) ? (args.length == 1 ? `${fn}${args[0]}` : `(${args[0]} ${fn} ${args[1]})`) : `${fn}(${args.join(', ')})`,
+    acc: ({prop}, rec) => `${rec}.${prop}`,
     lam: ({ args }, body) => `(\\${args.length > 1 ? '(' + args.map(arg => arg.name).join(', ') + ')' : args.length == 1 ? args[0].name : '()'} -> ${body})`
 })

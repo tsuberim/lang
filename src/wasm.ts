@@ -10,6 +10,7 @@ export class WatEmitter {
         list: (_, values) => dedent`unreachable`,
         id: ({ name }) => dedent`get_local $${name}`,
         match: () => dedent`unreachable`,
+        acc: () => dedent`unreachable`,
         app: (e, fn, args) => {
             const t = this.type(args.length);
             return `

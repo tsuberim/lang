@@ -4,7 +4,9 @@
   "description": "",
   "private": false,
   "main": "build/index.js",
-  "files": ["build"],
+  "files": [
+    "build"
+  ],
   "bin": {
     "lang": "build/index.js"
   },
@@ -30,6 +32,7 @@
     "fs-extra": "^10.1.0",
     "fs-stream-sync": "^2.0.14",
     "readline": "^1.3.0",
+    "strip-ansi": "^7.0.1",
     "wabt": "^1.0.29",
     "wast2wasm": "^0.0.1"
   }
