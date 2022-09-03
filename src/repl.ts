@@ -31,23 +31,23 @@ export async function repl() {
     const typeContext: TypeEnv = mapValues(std, x => generalize(x[1]));
 
     const helps: string[] = [
-        chalk`We can use the {green.bold !exit} command to exit from the RELP`,
+        chalk`We can use the {green.bold !exit} command to exit from the REPL (read, evaluate, print, loop)`,
         chalk`We can use the {green.bold !clear} command to clear the screen`,
         chalk`There are {bold.magenta numbers}, try: {yellow.italic 42}`,
-        chalk`There are {bold.magenta strings}, try: {yellow.italic \`hello\`}`,
+        chalk`There are {bold.magenta strings}, try: {yellow.italic 'hello'}`,
         chalk`We can use assignment to name an expression, try {yellow.bold x = 42 + 1}`,
         chalk`We can use that name later, try {yellow.bold x + 4}`,
         chalk`We can use the {green.bold !context} command to show our available names`,
         chalk`There are {bold.magenta lists}, try: {yellow.italic [1,2,3]}`,
-        chalk`Lists are {bold homogenous}, i.e. all items must be the same type, try: {yellow.italic [1,\`hello\`,3]}`,
+        chalk`Lists are {bold homogenous}, i.e. all items must be the same type, try: {yellow.italic [1,'hello',3]}`,
         chalk`Every expression has a type that is automatically {bold inferred}, try: {yellow.italic \\(x,y) -> x + y}`,
-        `? Whats the type of this expression {yellow.italic \\x -> x}`,
-        `There are records, try ${chalk.yellow.italic('{name: Str, age: Num}')}`,
-        `You can invent a new type consturctor by using an ${chalk.bold('uppercase')} name, try: ${chalk.yellow.italic('Person({name: `John`, age: 23})')}`,
-        `This is called a ${chalk.bold('tag')}, tags allow us to make a union of types, try: ${chalk.yellow.italic('[Person({name: `John`, age: 23}), Baby]')}`,
-        `? Whats the type of this expression ${chalk.yellow.bold('[\\x -> x.bar, \\x -> x.foo]')}`,
-        `We can use a {magenta.bold match} expression to match on a value, try: {yellow.bold match Hot(Very) when Hot(x) -> x when ignored -> Not}`,
-        `END (starting over...)`
+        chalk`Whats the type of this expression {yellow.italic \\x -> x} ?`,
+        `There are records, try ${chalk.yellow.italic(`{name: 'John', age: 23}`)}`,
+        `You can invent a new type consturctor by using an ${chalk.bold('uppercase')} name, try: ${chalk.yellow.italic(`Person({name: 'John', age: 23})`)}`,
+        `This is called a ${chalk.bold('tag')}, tags allow us to make a union of types, try: ${chalk.yellow.italic(`[Person({name: 'John', age: 23}), Baby]`)}`,
+        `Whats the type of this expression ${chalk.yellow.bold('[\\x -> x.bar, \\x -> x.foo]')} ?`,
+        chalk`We can use a {magenta.bold match} expression to match on a value, try: {yellow.bold match Hot(Very) when Hot(x) -> x when ignored -> Not}`,
+        chalk`END (starting over...)`
     ];
     let helpIdx = 0;
     const commands: { [key: string]: (expr?: Expr) => Promise<any> | any } = {
