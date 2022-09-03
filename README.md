@@ -10,8 +10,8 @@
 - fix readstream async issue
 - parse waits indefinatly
 - Run file
-
-- SLLOOOWWWness
+- Some tests?
+- SLLOOOWWWness (memoisation?)
 
 ## VScode support
 - semantic highlighting

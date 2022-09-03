@@ -94,6 +94,11 @@ export async function repl() {
     while (true) {
         let text: string = await new Promise(res => rl.question(chalk.gray('> '), res));
         try {
+            let run = false;
+            if(text.startsWith('!run ')) {
+                text = text.replace('!run ', '');
+                run = true;
+            }
             const cmd = parse(command, text);
             if (cmd.type === 'assignment' || cmd.type === 'evaluate') {
                 const expression = cmd.type === 'assignment' ? cmd.expr : cmd.expr;
@@ -101,7 +106,7 @@ export async function repl() {
                 let scheme = inferScheme(expression, typeContext);
 
                 let value = evaluate(expression)(valueContext);
-                if (scheme.type.kind === 'cons' && scheme.type.name === 'Task') {
+                if (run && scheme.type.kind === 'cons' && scheme.type.name === 'Task') {
                     value = await runTask(value as Task);
                     scheme.type = scheme.type.args[0];
                 }
