@@ -108,10 +108,10 @@ export const context = {
     ['length']: [(str: string) => str.length, Lam(Str, Num)],
     ['size']: [(vals: Value[]) => vals.length, Lam(List(t), Num)],
     ['++']: [(x: VLst, y: VLst) => [...x, ...y], Lam(List(t), List(t), List(t))],
-    ['fold']: [fold, Lam(List(t), Lam(t, t, k), t, List(k))],
+    ['fold']: [fold, Lam(List(t), Lam(t, t, k), t, k)],
     ['map']: [map, Lam(List(t), Lam(t, k), List(k))],
     ['readFile']: [readFile, Lam(Str, Task(Str, Void))],
     ['writeFile']: [writeFile, Lam(Str, Str, Task(Unit, Void))],
     ['print']: [print, Lam(Str, Task(Unit, Void))],
-    ['&>']: [bind, Lam(Task(t, e), Lam(t, Task(k, e)), Task(k, e)),]
+    ['await']: [bind, Lam(Task(t, e), Lam(t, Task(k, e)), Task(k, e)),]
 } as Context<[Value, Type]>

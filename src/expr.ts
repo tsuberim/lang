@@ -67,15 +67,24 @@ export const nonLeftRecursive: Parser<Expr> = alt<Expr>(
     lam,
     id,
     bet(seq(lbrace, newlines), delay(() => map(
-        seq(sep(seq(id, key('<-'), expr), alt(key(';'), newlines1)), expr), ([assignments, expr], span) => {
+        seq(sep(seq(id, key('<-'), opt(map(seq(id, key('|')), x => x && x[0])), expr), alt(key(';'), newlines1)), expr), ([assignments, expr], span) => {
             let e = expr;
-            for (const [id, , body] of assignments.reverse()) {
-                e = {
-                    type: 'app',
-                    span,
-                    fn: { type: 'id', span, name: '&>' },
-                    args: [body, { type: 'lam', span, args: [id], body: e }]
-                } as App
+            for (const [id, , bind, body] of assignments.reverse()) {
+                if (bind) {
+                    e = {
+                        type: 'app',
+                        span,
+                        fn: bind,
+                        args: [body, { type: 'lam', span, args: [id], body: e }]
+                    } as App
+                } else {
+                    e = {
+                        type: 'app',
+                        span,
+                        fn: { type: 'lam', span, args: [id], body: e },
+                        args: [body]
+                    }
+                }
             }
             return e;
         })), seq(newlines, rbrace))

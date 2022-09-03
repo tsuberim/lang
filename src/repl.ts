@@ -1,7 +1,7 @@
 import { cons, Expr, expr, format } from "./expr";
 import { createInterface } from 'readline';
 import { parse, alt, map, spaces, lowerName, seq, lit, opt } from "./parser";
-import { apply, applyToScheme, applyToType, compose, formatScheme, formatType, fresh, generalize, infer, inferScheme, instantiate, Scheme, TRec, TypeEnv, unify } from "./type";
+import { apply, applyToType, compose, formatScheme, formatType, fresh, generalize, infer, inferScheme, instantiate, Scheme, TRec, TypeEnv, unify } from "./type";
 import { mapValues } from "./utils";
 import { evaluate, formatValue, VClo, VRec } from "./value";
 import chalk from "chalk";
@@ -55,8 +55,8 @@ export async function repl() {
         help() {
             console.log(
                 dedent`
-                    Welcome to ${chalk.magenta.bold('mylang@' + require('../package.json').version)} (working title)!
-                    ${chalk.magenta.bold('mylang')} is a ${chalk.bold('purly-functional')}, ${chalk.bold('statically-typed')} language that compiles to ${chalk.bold('WASM')}.
+                    Welcome to ${chalk.magenta.bold('fun@' + require('../package.json').version)}!
+                    ${chalk.magenta.bold('fun')} is a ${chalk.bold(`purly-${chalk.magenta.bold('fun')}ctional`)}, ${chalk.bold('statically-typed')} language that I wrote for ${chalk.italic('fun')}.
 
                     This is a small tutorial guiding you through the language.
                     (type ${chalk.italic.bold('!next')} / ${chalk.italic.bold('!prec')} to navigate the tutorial, use ${chalk.italic.bold('!reset')} to get back to the start)

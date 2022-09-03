@@ -1,6 +1,6 @@
 {
-  "name": "@tsuberim/lang",
-  "version": "1.0.2",
+  "name": "@tsuberim/fun",
+  "version": "0.0.0",
   "description": "",
   "private": false,
   "main": "build/index.js",
@@ -8,7 +8,7 @@
     "build"
   ],
   "bin": {
-    "lang": "build/index.js"
+    "fun": "build/index.js"
   },
   "scripts": {
     "start": "ts-node src/index.ts",
