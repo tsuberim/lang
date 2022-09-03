@@ -88,6 +88,14 @@ function index(x: VLst, y: VNum) {
     return x[idx < 0 ? idx + x.length : idx]
 }
 
+function fold(list: VLst, op: VClo, seed: Value) {
+    let acc = seed;
+    for(const item of list.reverse()) {
+        acc = op(item, acc)
+    }
+    return acc;
+}
+
 export const context = {
     ['eq']: [(x: Value, y: Value) => eq(x)(y) ? tag('True') : tag('False'), Lam(t, t, Bool)],
     ['+']: [(x: VNum, y: VNum) => x + y, Lam(Num, Num, Num)],
@@ -99,6 +107,7 @@ export const context = {
     ['length']: [(str: string) => str.length, Lam(Str, Num)],
     ['size']: [(vals: Value[]) => vals.length, Lam(List(t), Num)],
     ['++']: [(x: VLst, y: VLst) => [...x, ...y], Lam(List(t), List(t), List(t))],
+    ['fold']: [fold, Lam(List(t), Lam(t, t, k), t, List(k))],
     ['map']: [map, Lam(List(t), Lam(t, k), List(k))],
     ['readFile']: [readFile, Lam(Str, Task(Str, Void))],
     ['writeFile']: [writeFile, Lam(Str, Str, Task(Unit, Void))],

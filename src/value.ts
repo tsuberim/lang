@@ -147,15 +147,12 @@ export const evaluate = walkExpr<(ctx: Context<Value>) => Value>({
         const val = value(ctx);
         if (isTag(val)) {
             const name = tagName(val);
-            const inside = val.value;
             for (const [ptn, v] of cases) {
-                if (ptn.name === name && !!inside === !!v) {
-                    if (!!inside) {
-                        try {
-                            const subst = match(ptn.value!, inside!);
-                            return v({ ...ctx, ...subst })
-                        } catch (e) { }
-                    }
+                if (ptn.name === name && !!val.value === !!ptn.value) {
+                    try {
+                        const subst = val.value ? match(ptn.value!, val.value!) : {};
+                        return v({ ...ctx, ...subst })
+                    } catch (e) { }
                 }
             }
             if (otherwise) {

@@ -273,4 +273,4 @@ export const newline = alt(key('\r\n'), key('\n'));
 export const name = named('id', map(seq(letter, rep(alt(letter, digit))), ([start, chars]) => start + chars.join('')));
 export const upperName = named('id', map(seq(uppercase, rep(alt(letter, digit))), ([start, chars]) => start + chars.join('')));
 export const lowerName = named('id', map(seq(lowercase, rep(alt(letter, digit))), ([start, chars]) => start + chars.join('')));
-export const sym = named('symbol', map(seq(spaces, rep1(alt(...[...'!@#%~^&*-+/><?'].map(char => lit(char)))), spaces), ([, x]) => x.join('')));
+export const sym = named('symbol', map(seq(spaces, rep1(alt(...[...'!@#%~^&*-+/><?|'].map(char => lit(char)))), spaces), ([, x]) => x.join('')));
