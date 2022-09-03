@@ -1,6 +1,6 @@
 {
   "name": "@tsuberim/lang",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "",
   "private": false,
   "main": "build/index.js",
