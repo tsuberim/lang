@@ -1,7 +1,7 @@
 import { cons, Expr, expr, format } from "./expr";
 import { createInterface } from 'readline';
 import { parse, alt, map, spaces, lowerName, seq, lit, opt } from "./parser";
-import { apply, applyToScheme, compose, formatScheme, formatType, generalize, infer, inferScheme, instantiate, TypeEnv, unify } from "./type";
+import { apply, applyToScheme, applyToType, compose, formatScheme, formatType, generalize, infer, inferScheme, instantiate, TypeEnv, unify } from "./type";
 import { mapValues } from "./utils";
 import { evaluate, formatValue, VClo } from "./value";
 import chalk from "chalk";
@@ -107,8 +107,8 @@ export async function repl() {
                 }
                 if (name) {
                     if (typeContext[name]) {
-                        const subst = unify(instantiate(typeContext[name]), instantiate(scheme));
-                        typeContext[name] = applyToScheme(subst, typeContext[name])
+                        const subst = unify(typeContext[name].type, scheme.type);
+                        typeContext[name] = generalize(applyToType(subst, scheme.type))
                     } else {
                         typeContext[name] = scheme;
                     }
@@ -121,7 +121,7 @@ export async function repl() {
                 const { id: { name }, expr: type } = cmd;
                 if (typeContext[name]) {
                     const subst = unify(instantiate(typeContext[name]), type);
-                    typeContext[name] = applyToScheme(subst, typeContext[name])
+                    typeContext[name] = generalize(applyToType(subst, type))
                 } else {
                     typeContext[name] = generalize(type);
                 }

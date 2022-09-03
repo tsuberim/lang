@@ -41,7 +41,7 @@ export type TypeEnv = Context<Scheme>;
 
 export function instantiate(scheme: Scheme): Type {
     const { type, args } = scheme;
-    return apply(type)(Object.fromEntries(args.map(arg => [arg, fresh()])))
+    return applyToType(Object.fromEntries(args.map(arg => [arg, fresh()])), type)
 }
 
 export function generalize(type: Type): Scheme {
