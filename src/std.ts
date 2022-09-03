@@ -102,6 +102,7 @@ export const context = {
     ['*']: [(x: VNum, y: VNum) => x * y, Lam(Num, Num, Num)],
     ['^']: [(x: VNum, y: VNum) => x + y, Lam(Str, Str, Str)],
     ['@']: [index, Lam(List(t), Num, t)],
+    ['toStr']: [(n: VNum) => `${n}`, Lam(Num, Str)],
     ['split']: [(str: string, delimiter: string) => str.split(delimiter), Lam(Str, Str, List(Str))],
     ['join']: [(str: string[], delimiter: string) => str.join(delimiter), Lam(List(Str), Str, Str)],
     ['length']: [(str: string) => str.length, Lam(Str, Num)],

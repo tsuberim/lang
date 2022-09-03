@@ -13,3 +13,4 @@
 - indent/dedent
 - fix readstream async issue
 - parse waits indefinatly
+- Run file

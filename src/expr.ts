@@ -1,5 +1,5 @@
 import { mapValues } from './utils';
-import { delay, alt, map, Parser, bet, sep, seq, rep, lit, lbrace, rbrace, name, arrow, backslash, colon, comma, lbracket, lcurly, rbracket, rcurly, eps, sym, dot, digits1, spaces, notChar, rep1, matches, Span, lowerName, upperName, opt, Source, key, sep1, semicolon } from './parser';
+import { delay, alt, map, Parser, bet, sep, seq, rep, lit, lbrace, rbrace, name, arrow, backslash, colon, comma, lbracket, lcurly, rbracket, rcurly, eps, sym, dot, digits1, spaces, notChar, rep1, matches, Span, lowerName, upperName, opt, Source, key, sep1, semicolon, newlines1, newlines } from './parser';
 
 export type Lit = { type: 'lit', span: Span, value: number | string }
 export type Id = { type: 'id', span: Span, name: string }
@@ -66,7 +66,19 @@ export const nonLeftRecursive: Parser<Expr> = alt<Expr>(
     unary,
     lam,
     id,
-    bet(lbrace, delay(() => expr), rbrace)
+    bet(seq(lbrace, newlines), delay(() => map(
+        seq(sep(seq(id, key('<-'), expr), alt(key(';'), newlines1)), expr), ([assignments, expr], span) => {
+            let e = expr;
+            for (const [id, , body] of assignments.reverse()) {
+                e = {
+                    type: 'app',
+                    span,
+                    fn: { type: 'id', span, name: '&>' },
+                    args: [body, { type: 'lam', span, args: [id], body: e }]
+                } as App
+            }
+            return e;
+        })), seq(newlines, rbrace))
 )
 
 // left recursive
@@ -145,7 +157,7 @@ export function toExpr(p: Pattern): Expr {
     }
 }
 
-export function toConsExpr({name, span, value}: PatCons): Cons {
+export function toConsExpr({ name, span, value }: PatCons): Cons {
     return { type: 'cons', span, name, value: value && toExpr(value) };
 }
 

@@ -245,9 +245,9 @@ export const digit = range('0', '9');
 export const digits = map(rep(digit), (arr) => arr.join(''))
 export const digits1 = map(rep1(digit), (arr) => arr.join(''))
 
-export const space = named('\\s', alt(lit(' '), lit('\n'), lit('\t')));
-export const spaces = rep(space);
-export const spaces1 = rep1(space);
+export const space = named('\\s', alt(lit(' '), lit('\t')));
+export const spaces = map(rep(space), x => x.join(''));
+export const spaces1 = map(rep1(space), x => x.join(''));
 
 export const eps = named('ε', (source) => [true, source]);
 
@@ -269,6 +269,8 @@ export const arrow = key('->');
 export const dot = key('.');
 export const equal = key('=');
 export const newline = alt(key('\r\n'), key('\n'));
+export const newlines = map(rep(newline), x => x.join());
+export const newlines1 = map(rep1(newline), x => x.join(''));
 
 export const name = named('id', map(seq(letter, rep(alt(letter, digit))), ([start, chars]) => start + chars.join('')));
 export const upperName = named('id', map(seq(uppercase, rep(alt(letter, digit))), ([start, chars]) => start + chars.join('')));

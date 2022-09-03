@@ -1,9 +1,9 @@
 import { cons, Expr, expr, format } from "./expr";
 import { createInterface } from 'readline';
 import { parse, alt, map, spaces, lowerName, seq, lit, opt } from "./parser";
-import { apply, applyToScheme, applyToType, compose, formatScheme, formatType, generalize, infer, inferScheme, instantiate, TypeEnv, unify } from "./type";
+import { apply, applyToScheme, applyToType, compose, formatScheme, formatType, fresh, generalize, infer, inferScheme, instantiate, Scheme, TRec, TypeEnv, unify } from "./type";
 import { mapValues } from "./utils";
-import { evaluate, formatValue, VClo } from "./value";
+import { evaluate, formatValue, VClo, VRec } from "./value";
 import chalk from "chalk";
 import { runModule, toWasm, WatEmitter } from "./wasm";
 import { evaluateImport, Item, item } from "./module";
@@ -46,7 +46,7 @@ export async function repl() {
         `You can invent a new type consturctor by using an ${chalk.bold('uppercase')} name, try: ${chalk.yellow.italic(`Person({name: 'John', age: 23})`)}`,
         `This is called a ${chalk.bold('tag')}, tags allow us to make a union of types, try: ${chalk.yellow.italic(`[Person({name: 'John', age: 23}), Baby]`)}`,
         `Whats the type of this expression ${chalk.yellow.bold('[\\x -> x.bar, \\x -> x.foo]')} ?`,
-        chalk`We can use a {magenta.bold match} expression to match on a value, try: {yellow.bold match Hot(Very) when Hot(x) -> x when ignored -> Not}`,
+        chalk`We can use a {magenta.bold when} expression to match on a value, try: {yellow.bold when Hot(Very) is Hot(x) -> x else Not}`,
         chalk`END (starting over...)`
     ];
     let helpIdx = 0;
@@ -65,11 +65,11 @@ export async function repl() {
         },
         next() {
             console.log(`${helpIdx + 1})`, helps[helpIdx]);
-            helpIdx = (helpIdx + 1) % helps.length;
+            helpIdx = (helpIdx + 1 + helps.length) % helps.length;
         },
         prev() {
             console.log(`${helpIdx + 1})`, helps[helpIdx]);
-            helpIdx = (helpIdx - 1) % helps.length;
+            helpIdx = (helpIdx - 1 + helps.length) % helps.length;
         },
         type(expr?: Expr) {
             const [, t] = infer(expr!)(typeContext);
@@ -115,7 +115,7 @@ export async function repl() {
                     valueContext[name] = value;
                 }
                 if (value !== null) {
-                    console.log(chalk`${formatValue(value)} {gray :} ${formatScheme(scheme)}`) // TODO
+                    console.log(chalk`${formatValue(value)} {gray :} ${formatScheme(scheme)}`)
                 }
             } if (cmd.type === 'decleration') {
                 const { id: { name }, expr: type } = cmd;
@@ -127,12 +127,14 @@ export async function repl() {
                 }
             } else if (cmd.type === 'import') {
                 const out = await evaluateImport(cmd);
-                const rec = mapValues(out, x => x[0]);
+                const rec: VRec = mapValues(out, x => x[0]);
                 const types = mapValues(out, x => x[1])
                 Object.assign(valueContext, rec)
                 Object.assign(typeContext, types)
 
-                console.log(formatValue(rec));
+                const trec: Scheme = generalize({kind: 'rec', union: false, open: false, items: mapValues(types, instantiate), rest: fresh()});
+
+                console.log(chalk`${formatValue(rec)} {gray :} ${formatScheme(trec)}`)
             } else if (cmd.type === 'meta') {
                 const { name, expr } = cmd;
                 if (name === 'exit') {

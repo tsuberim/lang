@@ -1,9 +1,10 @@
 import { cons, expr, Expr, Id, id, str, strPart } from './expr';
-import { key, map, equal, seq, Parser, Span, bet, lcurly, rcurly, sep, comma, parseFile, rep, newline, alt, lit, parse, spaces, spaces1, colon } from './parser';
+import { key, map, equal, seq, Parser, Span, bet, lcurly, rcurly, sep, comma, parseFile, rep, newline, alt, lit, parse, spaces, spaces1, colon, newlines1 } from './parser';
 import fs from 'fs-extra';
 import { evaluate, Value, VNum, VRec } from './value';
 import { Context, filterValues, mapValues } from './utils';
-import { compose, generalize, infer, Lam, Num, Scheme, type, Type } from './type';
+import { generalize, infer, inferScheme, Lam, Num, Scheme, type, Type } from './type';
+import {context as std} from './std';
 
 export type Import = { type: 'import', span: Span, path: string, imports: Id[] }
 export type Assignment = { type: 'assignment', span: Span, id: Id, expr: Expr }
@@ -17,7 +18,7 @@ export const assignment: Parser<Assignment> = map(seq(id, equal, expr), ([id, , 
 export const decleration: Parser<Decleration> = map(seq(id, colon, type), ([id, , expr], span) => ({ type: 'decleration', span, id, expr }));
 export const item = alt<Item>(importStatement, assignment, decleration)
 
-export const module: Parser<Module> = map(sep(alt<Item>(importStatement, assignment, decleration), key('\n')), (items, span) => ({ type: 'module', span, items }))
+export const module: Parser<Module> = map(sep(alt<Item>(importStatement, assignment, decleration), newlines1), (items, span) => ({ type: 'module', span, items }))
 
 export async function evaluateModule(mod: Module): Promise<Context<[Value, Scheme]>> {
     const { items } = mod;
@@ -28,17 +29,13 @@ export async function evaluateModule(mod: Module): Promise<Context<[Value, Schem
             Object.assign(out, imp)
         } else if (item.type === 'assignment') {
             const { id: { name }, expr } = item;
-            const [subst, t] = infer(expr)(mapValues(out, x => x[1]));
+            const t = inferScheme(expr, mapValues(out, x => x[1]));
             const val = evaluate(expr)(mapValues(out, x => x[0]));
-            out[name] = [val, generalize(t)]
+            out[name] = [val, t]
         }
     }
     return out
 }
-
-export const std: Context<[Value, Type]> = {
-    ['+']: [((x: VNum, y: VNum) => x + y) as Value, Lam(Num, Num, Num)],
-};
 
 export async function evaluateImport(imp: Import): Promise<Context<[Value, Scheme]>> {
     const { path, imports } = imp;
