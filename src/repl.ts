@@ -1,7 +1,7 @@
 import { cons, Expr, expr, format } from "./expr";
 import { createInterface } from 'readline';
 import { parse, alt, map, spaces, lowerName, seq, lit, opt } from "./parser";
-import { formatType, infer } from "./type";
+import { apply, applyToScheme, compose, formatScheme, formatType, generalize, infer, inferScheme, instantiate, TypeEnv, unify } from "./type";
 import { mapValues } from "./utils";
 import { evaluate, formatValue, VClo } from "./value";
 import chalk from "chalk";
@@ -9,6 +9,7 @@ import { runModule, toWasm, WatEmitter } from "./wasm";
 import { evaluateImport, Item, item } from "./module";
 import { context as std, runTask, Task } from './std';
 import dedent from "dedent";
+import { table } from "table";
 
 export type Nothing = { type: 'nothing' };
 export type Evaluate = { type: 'evaluate', expr: Expr };
@@ -27,7 +28,7 @@ export async function repl() {
     const rl = createInterface(process.stdin, process.stdout);
 
     const valueContext = mapValues(std, x => x[0]);
-    const typeContext = mapValues(std, x => x[1]);
+    const typeContext: TypeEnv = mapValues(std, x => generalize(x[1]));
 
     const helps: string[] = [
         chalk`We can use the {green.bold !exit} command to exit from the RELP`,
@@ -84,9 +85,8 @@ export async function repl() {
             console.log(result)
         },
         context() {
-            return console.log(Object.entries(valueContext).map(([name, val]) =>
-                chalk`${name}\t{gray =}\t${formatValue(val)}\t:\t${formatType(typeContext[name])}`
-            ).join('\n'))
+            const entries = Object.entries(typeContext).map(([name, type]) => [name, valueContext[name] ? formatValue(valueContext[name]) : chalk.red('undefined'), formatScheme(type)])
+            console.log(table([['name', 'value', 'type'], ...entries]))
         }
     }
 
@@ -98,18 +98,32 @@ export async function repl() {
             if (cmd.type === 'assignment' || cmd.type === 'evaluate') {
                 const expression = cmd.type === 'assignment' ? cmd.expr : cmd.expr;
                 const name = cmd.type === 'assignment' ? cmd.id.name : undefined;
-                let [, type] = infer(expression)(typeContext);
+                let scheme = inferScheme(expression, typeContext);
+
                 let value = evaluate(expression)(valueContext);
-                if(type.kind === 'cons' && type.name === 'Task') {
+                if (scheme.type.kind === 'cons' && scheme.type.name === 'Task') {
                     value = await runTask(value as Task);
-                    type = type.args[0];
+                    scheme.type = scheme.type.args[0];
                 }
                 if (name) {
+                    if (typeContext[name]) {
+                        const subst = unify(instantiate(typeContext[name]), instantiate(scheme));
+                        typeContext[name] = applyToScheme(subst, typeContext[name])
+                    } else {
+                        typeContext[name] = scheme;
+                    }
                     valueContext[name] = value;
-                    typeContext[name] = type
                 }
-                if(value !== null) {
-                    console.log(chalk`${formatValue(value)} {gray :} ${formatType(type)}`)
+                if (value !== null) {
+                    console.log(chalk`${formatValue(value)} {gray :} ${formatScheme(scheme)}`) // TODO
+                }
+            } if (cmd.type === 'decleration') {
+                const { id: { name }, expr: type } = cmd;
+                if (typeContext[name]) {
+                    const subst = unify(instantiate(typeContext[name]), type);
+                    typeContext[name] = applyToScheme(subst, typeContext[name])
+                } else {
+                    typeContext[name] = generalize(type);
                 }
             } else if (cmd.type === 'import') {
                 const out = await evaluateImport(cmd);

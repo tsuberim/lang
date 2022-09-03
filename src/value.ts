@@ -93,20 +93,8 @@ export function match(ptn: Pattern, value: Value): Context<Value> {
         }
     } else if (ptn.type === 'id') {
         return { [ptn.name]: value };
-    } else if (ptn.type === 'patcons') {
-        const consMatch = isTag(value) && value[_tagSymbol] === ptn.name;
-        if (consMatch) {
-            const val = value as VTag;
-            if (!!val.value === !!ptn.value) {
-                return (!ptn.value && {}) || match(ptn.value!, val.value!);
-            } else {
-                throw new RuntimeError('TODO');
-            }
-        } else {
-            throw new RuntimeError(`${formatValue(value)} is not a tag of name ${ptn.name}`)
-        }
     } else if (ptn.type === 'patlist') {
-        if (Array.isArray(value)) {
+        if (Array.isArray(value) && value.length === ptn.values.length) {
             const substs = ptn.values.map((p, i) => match(p, value[i]));
             const out = {};
             for (const s of substs) {
@@ -133,29 +121,55 @@ export function match(ptn: Pattern, value: Value): Context<Value> {
     }
 }
 
+export const eq = walkValue<(other: Value) => boolean>({
+    void: (v: VUnit) => other => false,
+    num: (v: VNum) => other => other === v,
+    str: (v: VStr) => other => other === v,
+    lst: (v: VLst, values) => other => Array.isArray(other) && other.length === v.length && values.every((v, i) => v(other[i])),
+    rec: (v: VRec, rec) => other => isRec(other) && Object.keys(other).length === Object.keys(rec).length && Object.values(mapValues(rec, (v, k) => v((other as VRec)[k]))).every(x => x),
+    tag: (v: VTag, value) => other => isTag(other) && tagName(other) === tagName(v) && !!value === !!other.value && (!value || value(other.value!)),
+    clo: (v: VClo) => other => false,
+})
+
 export const evaluate = walkExpr<(ctx: Context<Value>) => Value>({
     lit: ({ value }) => _ => value,
     list: (_, values) => ctx => values.map(val => val(ctx)),
     rec: (_, record) => ctx => mapValues(record, v => v(ctx)),
-    id: ({ name }) => ctx => isUppercase(name) ? (value: Value) => ({ [_tagSymbol]: name, value }) : ctx[name],
+    id: ({ name }) => ctx => {
+        if (ctx[name]) {
+            return ctx[name]
+        } {
+            throw new RuntimeError(`Unbound variable ${ctx[name]}`)
+        }
+    },
     cons: ({ name }, value) => ctx => ({ [_tagSymbol]: name, value: value && value(ctx) } as VTag),
     match: (_, value, cases, otherwise) => ctx => {
         const val = value(ctx);
-        for (const [ptn, v] of cases) {
-            try {
-                const subst = match(ptn, val);
-                return v({ ...ctx, ...subst })
-            } catch (e) { }
-        }
-        if(otherwise) {
-            return otherwise(ctx);
+        if (isTag(val)) {
+            const name = tagName(val);
+            const inside = val.value;
+            for (const [ptn, v] of cases) {
+                if (ptn.name === name && !!inside === !!v) {
+                    if (!!inside) {
+                        try {
+                            const subst = match(ptn.value!, inside!);
+                            return v({ ...ctx, ...subst })
+                        } catch (e) { }
+                    }
+                }
+            }
+            if (otherwise) {
+                return otherwise(ctx);
+            } else {
+                throw new RuntimeError(`No case matched`)
+            }
         } else {
-            throw new RuntimeError(`No case matched`)
+            throw new RuntimeError(`Expected a tag, found ${formatValue(val)}`)
         }
     },
     acc: (e, rec) => ctx => {
         const val = rec(ctx);
-        if(isRec(val)) {
+        if (isRec(val)) {
             return (val as VRec)[e.prop];
         } else {
             throw new RuntimeError(`Cannot access property ${e.prop} of ${formatValue(val)}`);

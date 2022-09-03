@@ -1,8 +1,8 @@
 
-import { cons, Expr, freeVars, toExpr, walkExpr } from "./expr";
+import { cons, Expr, freeVars, toConsExpr, toExpr, walkExpr } from "./expr";
 import { mapValues, Context, filterValues, isUppercase } from "./utils";
 import chalk from 'chalk';
-import { alt, bet, colon, delay, key, langle, lcurly, lowerName, map, opt, Parser, pipe, rangle, rcurly, rep, seq, upperName } from "./parser";
+import { alt, bet, colon, delay, key, langle, lbrace, lbracket, lcurly, lowerName, map, opt, Parser, pipe, rangle, rbrace, rcurly, rep, rep1, seq, upperName } from "./parser";
 
 export type TCons = { kind: 'cons', name: string, args: Type[] }
 export type TId = { kind: 'id', name: string };
@@ -26,14 +26,28 @@ export function List(type: Type): TCons {
     return Cons('List', type);
 }
 
-export const Num: TCons = Cons('num')
-export const Str: TCons = Cons('str')
+export const Num: TCons = Cons('Num')
+export const Str: TCons = Cons('Str')
 
 export function Lam(...types: Type[]): TCons {
     return { kind: 'cons', name: 'Func', args: types }
 }
 
 export type Type = TCons | TId | TRec | TCons
+
+export type Scheme = {kind: 'scheme', args: string[], type: Type};
+export type Subst = Context<Type>;
+export type TypeEnv = Context<Scheme>;
+
+export function instantiate(scheme: Scheme): Type {
+    const {type, args} = scheme;
+    return apply(type)(Object.fromEntries(args.map(arg => [arg, fresh()])))
+}
+
+export function generalize(type: Type): Scheme {
+    const args = [...free(type)]
+    return {kind: 'scheme', args, type};
+}
 
 export interface TypeWalker<T> {
     cons(t: TCons, args: T[]): T,
@@ -56,6 +70,22 @@ export function walkType<T>(walker: TypeWalker<T>) {
     return f;
 }
 
+export function formatScheme(scheme: Scheme) {
+    const subst: Context<TId> = {};
+    const names = 'abcdefghijklmnop';
+    let i = 0;
+    let gen = 0;
+    for(const arg of scheme.args) {
+        if(i >= names.length) {
+            i = 0;
+            gen++;
+        }
+        subst[arg] = {kind: 'id', name: names[i] + (gen ? gen.toString() : '')}
+        i++;
+    }
+    return Object.keys(subst).length ? `${chalk.green`∀${Object.values(subst).map(x => x.name)}.`} ${formatType(applyToType(subst,scheme.type))}` : formatType(scheme.type)
+}
+
 export const formatType = walkType<string>({
     cons: ({ name }, args) => {
         if (name === 'Func') {
@@ -69,7 +99,7 @@ export const formatType = walkType<string>({
     id: ({ name }) => chalk.green(name),
     rec: ({ union, open, items }, rec, rest) => {
         const formatCons = (name: string, val: string) => `${name}${val === '{}' ? '' : `<${val}>`}`;
-        return `${union ? '[' : '{'}${open ? `* ` : ''}${Object.entries(rec).map(([name, val]) => union ? formatCons(name, val) : `${name}: ${val}`).join(', ')}${union ? ']' : '}'}`
+        return `${union ? '[' : '{'}${Object.entries(rec).map(([name, val]) => union ? formatCons(name, val) : `${name}: ${val}`).join(', ')}${union ? ']' : '}'}${open ? rest : ''}`
     }
 })
 
@@ -79,7 +109,7 @@ export class TypeError extends Error {
     }
 }
 
-export const apply = walkType<(ctx: Context<Type>) => Type>({
+export const apply = walkType<(ctx: Subst) => Type>({
     cons: ({ name }, args) => ctx => ({ kind: 'cons', name, args: args.map(arg => arg(ctx)) }),
     id: id => ctx => ctx[id.name] || id,
     rec: ({ union, open }, rec, rest) => ctx => {
@@ -95,15 +125,27 @@ export const apply = walkType<(ctx: Context<Type>) => Type>({
     }
 })
 
-export function applySubst(ctx1: Context<Type>, ctx2: Context<Type>) {
+export function applyToType(subst: Subst, type: Type) {
+    return apply(type)(subst);
+}
+
+export function applyToScheme(subst: Subst, scheme: Scheme): Scheme {
+    return {...scheme, type: applyToType(filterValues(subst, (_,k) => !scheme.args.includes(k)), scheme.type)}
+}
+
+export function applySubst(subst: Subst, env: TypeEnv) {
+    return mapValues(env, scheme => applyToScheme(subst, scheme))
+}
+
+export function compose(ctx1: Subst, ctx2: Subst) {
     const newCtx = { ...ctx1, ...ctx2 };
-    return mapValues(newCtx, t => apply(t)(ctx1));
+    return mapValues(newCtx, t => applyToType(ctx1, t));
 }
 
 export const free = walkType<Set<string>>({
     cons: (_, args) => new Set([...args.map(arg => [...arg.values()]).flat()]),
     id: id => new Set([id.name]),
-    rec: (_, record, rest) => new Set([...Object.values(record).map(x => [...x.values()]).flat(), ...(rest || [])]),
+    rec: ({open}, record, rest) => new Set([...Object.values(record).map(x => [...x.values()]).flat(), ...(open ? (rest || []): [])]),
 })
 
 export function occurs(name: string, t: Type) {
@@ -129,7 +171,7 @@ export function unify(t1: Type, t2: Type): Context<Type> {
         }
 
         let subst = {};
-        t1.args.forEach((t, i) => subst = applySubst(unify(apply(t)(subst), apply(t2.args[i])(subst)), subst))
+        t1.args.forEach((t, i) => subst = compose(unify(apply(t)(subst), apply(t2.args[i])(subst)), subst))
         return subst;
     }
 
@@ -143,12 +185,12 @@ export function unify(t1: Type, t2: Type): Context<Type> {
         let subst = {};
         for (const k of intersection) {
             const s = unify(t1.items[k], t2.items[k]);
-            subst = applySubst(s, subst);
+            subst = compose(s, subst);
         }
 
         const rest = fresh()
-        subst = applySubst(unify(rest, t1.rest), subst);
-        subst = applySubst(unify(rest, t2.rest), subst);
+        subst = compose(unify(rest, t1.rest), subst);
+        subst = compose(unify(rest, t2.rest), subst);
 
         const t1Minust2 = filterValues(t1.items, (_, k) => !t2.items[k]);
         const t2Minust1 = filterValues(t2.items, (_, k) => !t1.items[k]);
@@ -156,8 +198,8 @@ export function unify(t1: Type, t2: Type): Context<Type> {
         const assignableToT1 = !Object.keys(t2Minust1).length || t1.open;
         const assignableToT2 = !Object.keys(t1Minust2).length || t2.open;
         if (open || (assignableToT1 && assignableToT2)) {
-            subst = applySubst(unify(t1.rest, { kind: 'rec', union, items: t2Minust1, rest, open: open }), subst);
-            subst = applySubst(unify(t2.rest, { kind: 'rec', union, items: t1Minust2, rest, open: open }), subst);
+            subst = compose(unify(t1.rest, { kind: 'rec', union, items: t2Minust1, rest, open: open }), subst);
+            subst = compose(unify(t2.rest, { kind: 'rec', union, items: t1Minust2, rest, open: open }), subst);
         } else {
             throw new TypeError(`Types are incompatible ${formatType(t1)} !~ ${formatType(t2)}`)
         }
@@ -183,13 +225,13 @@ export const reverse = walkType<Type>({
     rec: rec => ({ ...rec, open: !rec.open }),
 })
 
-export const infer = walkExpr<(c: Context<Type>) => [Context<Type>, Type]>({
+export const infer = walkExpr<(c: Context<Scheme>) => [Context<Type>, Type]>({
     lit: ({ value }) => _ => [{}, typeof value === 'number' ? Num : Str],
     rec: (_, record) => c => {
-        let subst = c;
+        let subst = {};
         const t: { [key: string]: Type } = mapValues(record, (v, k) => {
-            const [s, t] = v(subst);
-            subst = applySubst(s, subst);
+            const [s, t] = v(c);
+            subst = compose(s, subst);
             return t;
         })
         return [subst, { kind: 'rec', union: false, items: t, open: false, rest: fresh() }]
@@ -199,71 +241,70 @@ export const infer = walkExpr<(c: Context<Type>) => [Context<Type>, Type]>({
         let t: Type = fresh();
         for (const val of values) {
             const [s, tv] = val(c);
-            subst = applySubst(s, subst);
+            subst = compose(s, subst);
             const s2 = unify(t, tv);
             t = apply(t)(s2);
-            subst = applySubst(s2, subst);
+            subst = compose(s2, subst);
         }
         return [subst, Cons('List', apply(t)(subst))];
     },
     id: ({ name }) => c => {
         if (c[name]) {
-            return [{}, c[name]]
+            return [{}, instantiate(c[name])]
         } else {
             throw new TypeError(`Could not determine type for variable '${name}'`);
         }
     },
     cons: ({ name }, value) => c => {
         if (value) {
-            let subst = c;
             const [s, t] = value(c);
-            subst = applySubst(s, c);
-            return [subst, { kind: 'rec', union: true, items: { [name]: apply(t)(subst) }, open: true, rest: fresh() }]
+            return [s, { kind: 'rec', union: true, items: { [name]: applyToType(s, t) }, open: true, rest: fresh() }]
         } else {
             return [{}, { kind: 'rec', union: true, items: { [name]: Unit }, open: true, rest: fresh() }]
         }
     },
     match: (e, expr, cases, otherwise) => c => {
-        let subst = c;
+        let subst = {};
         let out: Type = fresh();
         let [s, t] = expr(c);
-        subst = applySubst(s, subst);
+        subst = compose(s, subst);
 
         // start with empty union
         const options = fresh();
-        subst = applySubst(unify(t, {kind: 'rec', union: true, open: true, items: {}, rest: options}), subst)
+        subst = compose(unify(t, {kind: 'rec', union: true, open: true, items: {}, rest: options}), subst)
         t = apply(t)(subst);
 
         let tPtn: Type = fresh();
         for (const [ptn, e] of cases) {
-            const fv = freeVars(toExpr(ptn));
+            const ptnExpr = toConsExpr(ptn);
+            const fv = freeVars(ptnExpr);
 
             // gather constraints from pattern
-            let ctx = Object.fromEntries([...fv].map(v => [v, fresh()]));
-            let [substInsideCase, ptnTypeRaw] = infer(toExpr(ptn))(ctx);
+            let ctx: TypeEnv = Object.fromEntries([...fv].map(v => [v, {kind: 'scheme', args: [], type: fresh()}]));
+            let [substInsideCase, ptnTypeRaw] = infer(ptnExpr)(ctx);
             ctx = applySubst(substInsideCase, ctx);
 
             // assert that all patterns are of the same type
-            subst = applySubst(unify(tPtn, ptnTypeRaw), subst);
+            subst = compose(unify(tPtn, ptnTypeRaw), subst);
             ptnTypeRaw = apply(ptnTypeRaw)(subst);
             tPtn = apply(tPtn)(subst);
 
             // infer the type of the consequence given the types of the matched variables
             const [s, tE] = e(applySubst(subst, { ...c, ...ctx }));
-            subst = applySubst(s, subst);
-            subst = applySubst(unify(apply(tE)(subst), out), subst);
+            subst = compose(s, subst);
+            subst = compose(unify(apply(tE)(subst), out), subst);
             tPtn = apply(tPtn)(subst);
             out = apply(out)(subst)
         }
 
         // finally unify the expr type with the pattern type (open/closed according to if there's an otherwise branch)
-        subst = applySubst(unify(t, otherwise ? tPtn : reverse(tPtn)), subst);
+        subst = compose(unify(t, otherwise ? tPtn : reverse(tPtn)), subst);
         t = apply(t)(subst);
         
         if (otherwise) {
             const [s, tOtherwise] = otherwise(c);
-            subst = applySubst(s, subst);
-            subst = applySubst(unify(apply(tOtherwise)(subst), out), subst);
+            subst = compose(s, subst);
+            subst = compose(unify(apply(tOtherwise)(subst), out), subst);
         }
 
         return [subst, apply(out)(subst)];
@@ -277,28 +318,32 @@ export const infer = walkExpr<(c: Context<Type>) => [Context<Type>, Type]>({
     app: (_, fn, args) => c => {
         const tResult = fresh();
         let [subst, tFn] = fn(c);
-        subst = applySubst(subst, c)
         const tArgs = args.map(arg => {
-            const [s, tArg] = arg(subst);
-            subst = applySubst(s, subst);
+            const [s, tArg] = arg(c);
+            subst = compose(s, subst);
             return tArg;
         });
 
         const uniSubst = unify(apply(tFn)(subst), { kind: 'cons', name: 'Func', args: [...tArgs, tResult] });
-        return [applySubst(uniSubst, subst), apply(tResult)(uniSubst)];
+        return [compose(uniSubst, subst), apply(tResult)(uniSubst)];
     },
     lam: ({ args }, body) => c => {
-        const argTypes = Object.fromEntries(args.map(arg => [arg.name, fresh()]));
+        const argTypes = Object.fromEntries(args.map(arg => [arg.name, {kind: 'scheme', args: [], type: fresh()} as Scheme]));
         const [subst, t] = body({ ...c, ...argTypes });
-        const finalType: TCons = { kind: 'cons', name: 'Func', args: [...args.map(arg => argTypes[arg.name]), t] };
+        const finalType: TCons = { kind: 'cons', name: 'Func', args: [...args.map(arg => argTypes[arg.name].type), t] };
         return [subst, apply(finalType)(subst)]
     },
 });
 
+export function inferScheme(expr: Expr, env: TypeEnv) {
+    const [, t] = infer(expr)(env);
+    return generalize(t);
+}
 
-export const type = delay(() => alt<Type>(tCons, tlam, tId, tRec));
+export const type = delay(() => alt<Type>(tCons, tlam, tId, tRec, tTags));
 
-export const tCons: Parser<TCons> = map(seq(upperName, bet(langle, rep(type), rangle)), ([name, args]) => ({ kind: 'cons', name, args }))
+export const tCons: Parser<TCons> = map(seq(upperName, opt(bet(langle, rep1(type), rangle))), ([name, args]) => ({ kind: 'cons', name, args: args || [] }))
 export const tlam: Parser<TCons> = map(seq(bet(langle, rep(type), rangle), key('->'), type), ([args, , result]) => ({ kind: 'cons', name: 'Func', args: [...args, result], }))
 export const tId: Parser<TId> = map(lowerName, name => ({ kind: 'id', name }))
 export const tRec: Parser<TRec> = map(bet(lcurly, seq(rep(map(seq(lowerName, colon, type), ([k, , v]) => [k, v] as [string, Type])), opt(key('*'))), rcurly), ([entries, open]) => ({ kind: 'rec', union: false, items: Object.fromEntries(entries), rest: fresh(), open: !!open }))
+export const tTags: Parser<TRec> = map(bet(lbracket, seq(rep(map(seq(lowerName, opt(bet(lbrace, type, rbrace))), ([k, v]) => [k, v || Unit] as [string, Type])), opt(key('*'))), lbracket), ([entries, open]) => ({ kind: 'rec', union: false, items: Object.fromEntries(entries), rest: fresh(), open: !!open }))

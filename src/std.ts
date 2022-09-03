@@ -1,11 +1,13 @@
-import { Cons, fresh, Lam, List, Num, Str, Type, Unit, Void } from './type';
+import { Cons, fresh, Lam, List, Num, Str, TRec, Type, Unit, Void } from './type';
 import { Context } from './utils';
-import { VNum, Value, VLst, VRec, VStr, VClo, VUnit, tag, VTag, tagName, formatValue } from './value';
+import { VNum, Value, VLst, VRec, VStr, VClo, VUnit, tag, VTag, tagName, formatValue, eq } from './value';
 import fs from 'fs';
 
 const t = fresh();
 const k = fresh();
 const e = fresh();
+
+const Bool: TRec = {kind: 'rec', union: true, open: false, items: {['True']: Unit, ['False']: Unit}, rest: fresh()}
 
 const Task = (t: Type, e: Type) => Cons('Task', t, e);
 const Result = (t: Type, e: Type) => Cons('Result', t, e);
@@ -87,11 +89,13 @@ function index(x: VLst, y: VNum) {
 }
 
 export const context = {
+    ['eq']: [(x: Value, y: Value) => eq(x)(y) ? tag('True') : tag('False'), Lam(t, t, Bool)],
     ['+']: [(x: VNum, y: VNum) => x + y, Lam(Num, Num, Num)],
     ['*']: [(x: VNum, y: VNum) => x * y, Lam(Num, Num, Num)],
     ['^']: [(x: VNum, y: VNum) => x + y, Lam(Str, Str, Str)],
     ['@']: [index, Lam(List(t), Num, t)],
     ['split']: [(str: string, delimiter: string) => str.split(delimiter), Lam(Str, Str, List(Str))],
+    ['join']: [(str: string[], delimiter: string) => str.join(delimiter), Lam(List(Str), Str, Str)],
     ['length']: [(str: string) => str.length, Lam(Str, Num)],
     ['size']: [(vals: Value[]) => vals.length, Lam(List(t), Num)],
     ['++']: [(x: VLst, y: VLst) => [...x, ...y], Lam(List(t), List(t), List(t))],

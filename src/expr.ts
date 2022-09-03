@@ -11,13 +11,13 @@ export type PatCons = { type: 'patcons', span: Span, name: string, value?: Patte
 export type PatRec = { type: 'patrec', span: Span, record: { [name: string]: Pattern } }
 export type PatList = { type: 'patlist', span: Span, values: Pattern[] }
 
-export type Acc = {type: 'acc', span: Span, rec: Expr, prop: string};
+export type Acc = { type: 'acc', span: Span, rec: Expr, prop: string };
 export type App = { type: 'app', span: Span, fn: Expr, args: Expr[] }
 export type Lam = { type: 'lam', span: Span, args: Id[], body: Expr }
 
 export type Match = { type: 'match', span: Span, value: Expr, cases: [PatCons, Expr][], otherwise?: Expr }
 
-export type Pattern = Lit | Id | PatCons | PatRec | PatList
+export type Pattern = Lit | Id | PatRec | PatList
 export type Expr = Lit | Id | Cons | Rec | List | Pattern | Match | Acc | App | Lam
 
 export const strPart = map(rep1(notChar(`'`, '\{', '\}')), arr => arr.join(''));
@@ -45,7 +45,7 @@ export const cons: Parser<Cons> = map(seq(upperName, opt(bet(lbrace, expr, rbrac
 export const rec: Parser<Rec> = map(bet(lcurly, sep(map(seq(name, colon, expr), ([name, , val]) => [name, val] as [string, Expr]), comma), rcurly), (entries, span) => ({ type: 'rec', span, record: Object.fromEntries(entries) }));
 export const list: Parser<List> = map(bet(lbracket, sep(expr, comma), rbracket), (values, span) => ({ type: 'list', span, values }))
 
-export const pattern: Parser<Pattern> = delay(() => alt<Pattern>(num, id, bet(lit(`'`), str, lit(`'`)), patcons, patrec, patlist));
+export const pattern: Parser<Pattern> = delay(() => alt<Pattern>(num, id, bet(lit(`'`), str, lit(`'`)), patrec, patlist));
 
 export const patcons: Parser<PatCons> = map(seq(upperName, opt(bet(lbrace, pattern, rbrace))), ([name, value], span) => ({ type: 'patcons', span, name, value }));
 export const patrec: Parser<PatRec> = map(bet(lcurly, sep(map(seq(name, colon, pattern), ([name, , val]) => [name, val] as [string, Pattern]), comma), rcurly), (entries, span) => ({ type: 'patrec', span, record: Object.fromEntries(entries) }));
@@ -136,15 +136,17 @@ export function walkExpr<T>(walker: ExprWalker<T>) {
 }
 
 export function toExpr(p: Pattern): Expr {
-    if (p.type === 'patcons') {
-        return { type: 'cons', span: p.span, name: p.name, value: p.value && toExpr(p.value) }
-    } else if (p.type === 'patlist') {
+    if (p.type === 'patlist') {
         return { type: 'list', span: p.span, values: p.values.map(toExpr) }
     } else if (p.type === 'patrec') {
         return { type: 'rec', span: p.span, record: mapValues(p.record, toExpr) }
     } else {
         return p;
     }
+}
+
+export function toConsExpr({name, span, value}: PatCons): Cons {
+    return { type: 'cons', span, name, value: value && toExpr(value) };
 }
 
 export const freeVars: (e: Expr) => Set<String> = walkExpr<Set<string>>({
@@ -154,7 +156,7 @@ export const freeVars: (e: Expr) => Set<String> = walkExpr<Set<string>>({
     id: ({ name }) => new Set([name]),
     cons: ({ name }, value) => value || new Set(),
     match: (_, value, cases, otherwise) => new Set(...value, cases.map(([p, e]) => {
-        const args = freeVars(toExpr(p));
+        const args = freeVars(toConsExpr(p));
         return new Set([...e, ...(otherwise || [])].filter(x => !args.has(x)))
     })),
     acc: (_, rec) => rec,
@@ -168,8 +170,8 @@ export const format: (e: Expr) => string = walkExpr<string>({
     list: (_, values) => `[${values.join(', ')}]`,
     id: ({ name }) => name,
     cons: ({ name }, value) => value ? `${name}(${value})` : name,
-    match: (_, value, cases, otherwise) => `when ${value} is\n\t${cases.map(([ptn, e]) => `${format(toExpr(ptn))} -> ${e}`).join(';\n\t')}${otherwise ? `else ${otherwise}` :''}`,
+    match: (_, value, cases, otherwise) => `when ${value} is\n\t${cases.map(([ptn, e]) => `${format(toConsExpr(ptn))} -> ${e}`).join(';\n\t')}${otherwise ? `else ${otherwise}` : ''}`,
     app: (_, fn, args) => matches(sym, fn) ? (args.length == 1 ? `${fn}${args[0]}` : `(${args[0]} ${fn} ${args[1]})`) : `${fn}(${args.join(', ')})`,
-    acc: ({prop}, rec) => `${rec}.${prop}`,
+    acc: ({ prop }, rec) => `${rec}.${prop}`,
     lam: ({ args }, body) => `(\\${args.length > 1 ? '(' + args.map(arg => arg.name).join(', ') + ')' : args.length == 1 ? args[0].name : '()'} -> ${body})`
 })
